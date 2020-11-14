@@ -1,5 +1,5 @@
 module Chemostat_Dynamics
 
-# Write your package code here.
+include("SimpleDynamic/SimpleDynamic.jl")
 
 end
