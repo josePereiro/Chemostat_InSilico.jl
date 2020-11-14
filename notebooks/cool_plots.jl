@@ -1,25 +1,26 @@
 import DrWatson: quickactivate
 quickactivate(@__DIR__, "Chemostat_Kayser2005")
 
-import Chemostat_Dynamics: SimpleDynamic
-const SD = SimpleDynamic
+using Chemostat_Dynamics
+using Chemostat_Dynamics.Polytopes
+using Chemostat_Dynamics.MonteCarlo
 using Plots
 
 ## ------------------------------------------------------------------
 # Plot, Sampling histogram
 let
     n = 1_000_000
-    p = SD.SimParams()
-    cells_pool = SD.generate_random_cells(p, n; verbose = false)
-    mvatp = SD.vatp_global_max(p)
-    pcells = SD.pick_cells(n, cells_pool) do cell
-        prob = SD.vatp(cell)/mvatp
+    p = Polytope()
+    cells_pool = generate_random_cells(p, n; verbose = false)
+    mvatp = vatp_global_max(p)
+    pcells = pick_cells(n, cells_pool) do cell
+        prob = vatp(cell)/mvatp
         return rand() <= prob
     end
     
     # Ploting
     ps = []
-    for (name, f) in [("vatp", SD.vatp), ("vg", SD.vg)]
+    for (name, f) in [("vatp", vatp), ("vg", vg)]
         plt = plot(title = "Polytope Sampling",legend = :left, xlabel = name, ylabel = "prob")
         normalize = :probability
         alpha = 0.8
@@ -34,22 +35,34 @@ end
 # Plot, Sampling polytope graphs
 let
     n = 10_000
-    p = SD.SimParams()
-    cells_pool = SD.generate_random_cells(p, n; tries = 100, verbose = true)
-    mvatp = SD.vatp_global_max(p)
-    pcells = SD.pick_cells(n, cells_pool) do cell
-        prob = SD.vatp(cell)/mvatp
+    p = Polytope()
+    cells_pool = generate_random_cells(p, n; verbose = false)
+    mvatp = vatp_global_max(p)
+    pcells = pick_cells(n, cells_pool) do cell
+        prob = vatp(cell)/mvatp
         return rand() <= prob
     end
     ps = []
     for (title, cells) in [("Uniform sampling", cells_pool), 
                            ("Non-Uniform Sampling", pcells)]                
-        plt = SD.plot_polytop(p)
+        plt = plot_polytope(p)
         plot!(plt; title)
-        scatter!(plt, SD.vatp.(cells), SD.vg.(cells), label = "", color = :black, alpha = 0.1)
+        scatter!(plt, vatp.(cells), vg.(cells), label = "", color = :black, alpha = 0.1)
         push!(ps, plt)
     end
     plot(ps...; layout = 2, size = [850, 400])
 end
 
 
+## ------------------------------------------------------------------
+# Plot, vatp vs beta
+let
+    pol = Polytope(xi = 100.0)
+    betas_orders = -5:0.5:5
+    plt = plot()
+    for o in betas_orders
+        rvatp, probs = vatp_marginal_probs(pol, 10.0^o; n = Int(1e5))
+        plot!(plt, rvatp, probs ./ maximum(probs), label = "", lw = 3)
+    end
+    plt
+end

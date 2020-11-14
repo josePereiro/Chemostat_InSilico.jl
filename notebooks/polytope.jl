@@ -46,7 +46,7 @@ begin
 end
 
 # ╔═╡ 38248926-25d4-11eb-3440-d5b8d471db91
-SD.plot_polytop(SD.SimParams(;Lr ,Ur ,Lg ,Ug ,Ll ,Ul ,Nb ,Nf ,Nr ,cg ,xi))
+SD.plot_polytop(SD.Polytope(;Lr ,Ur ,Lg ,Ug ,Ll ,Ul ,Nb ,Nf ,Nr ,cg ,xi))
 
 # ╔═╡ dbc538ce-2608-11eb-16a1-79c5dd8b280d
 x = 1

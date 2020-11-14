@@ -1,4 +1,4 @@
-function plot_polytop(p)
+function plot_polytope(p)
     plt = plot(xlabel = "vatp", ylabel = "vg")
     #locals
     kwargs = (;color = :black, lw = 3, label = "")

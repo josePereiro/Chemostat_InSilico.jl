@@ -1,5 +1,5 @@
 struct Cell
-    p::SimParams
+    p::Polytope
     vatp::Float64
     vg::Float64
 end
@@ -8,4 +8,4 @@ vatp(c::Cell) = c.vatp
 vg(c::Cell) = c.vg
 # TODO: finish other dependen fluxes
 
-is_inpolytope(c::Cell) = is_inpolytope(c.vatp, c.vg, c.p)
+Polytopes.is_inpolytope(c::Cell) = Polytopes.is_inpolytope(c.vatp, c.vg, c.p)
