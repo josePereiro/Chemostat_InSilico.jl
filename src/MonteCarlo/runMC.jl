@@ -20,7 +20,7 @@ function runMC(;p::Polytope, pinking_fun::Function,
     chuncks = get_chuncks(1:niters, nthreads(); th = threading_th)
 
     # Simulating time
-    verbose && (prog = Progress(niters, "Simulating -t$(min(length(chuncks), nthreads()))... "); 
+    verbose && (prog = Progress(niters; desc = "Simulating -t$(min(length(chuncks), nthreads()))... ", dt = 0.5); 
         count = zeros(Int, nthreads()))
     @threads for chunck in chuncks
 

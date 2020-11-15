@@ -8,7 +8,7 @@ using Plots
 
 ## ------------------------------------------------------------------
 # Plot, Sampling histogram
-let
+@time let
     n = 1_000_000
     p = Polytope()
     cells_pool = generate_random_cells(p, n; verbose = false)
@@ -33,7 +33,7 @@ end
 
 ## ------------------------------------------------------------------
 # Plot, Sampling polytope graphs
-let
+@time let
     n = 10_000
     p = Polytope()
     cells_pool = generate_random_cells(p, n; verbose = false)
@@ -56,13 +56,72 @@ end
 
 ## ------------------------------------------------------------------
 # Plot, vatp vs beta
-let
+@time let
     pol = Polytope(xi = 100.0)
     betas_orders = -5:0.5:5
     plt = plot()
     for o in betas_orders
-        rvatp, probs = vatp_marginal_probs(pol, 10.0^o; n = Int(1e5))
+        rvatp, probs = vatp_marginal_pdf_probs(pol, 10.0^o; n = Int(1e5))
         plot!(plt, rvatp, probs ./ maximum(probs), label = "", lw = 3)
     end
     plt
+end
+
+## ------------------------------------------------------------------
+# Different mrates
+@time let
+    mutrs = collect(0.0:0.2:1.0)
+    ncells, niters = Int(1e6), Int(1e7)
+    ps = []
+    for mutr in mutrs
+
+        @info "Running Simulation " ncells niters mutr
+        
+        # simulating 
+        p = Polytope()
+        pinking_fun(cell) = rand() < vatp(cell)/vatp_global_max(p)
+        threading_th = Int(1e5)
+        cells = runMC(;p, pinking_fun, ncells, niters, mutr, threading_th, verbose = true)
+
+        # Ploting
+        normalize = :probability
+        alpha = 0.8
+        label = round(mutr, digits = 3)
+        plt = histogram(vatp.(cells); normalize, label)
+
+        # Storing
+        push!(ps, plt)
+        GC.gc()
+    end
+    plot(ps..., layout = length(ps))
+end
+
+## ------------------------------------------------------------------
+# Different niters
+@time let
+    @info "Different niters"
+    niters_order = 5:8
+    ncells, mutr = Int(1e6), 0.0
+    pol = Polytope()
+    ps = []
+    for order in niters_order
+        niters = 10^order
+        @info "Running Simulation " ncells niters mutr
+        
+        # simulating 
+        pinking_fun(cell) = rand() < vatp(cell)/vatp_global_max(pol)
+        threading_th = Int(1e5)
+        cells = runMC(;p = pol, pinking_fun, ncells, niters, mutr, threading_th, verbose = true)
+
+        # Ploting
+        normalize = :probability
+        alpha = 0.8
+        label = "10^$(order)"
+        plt = histogram(vatp.(cells); normalize, label)
+
+        # Storing
+        push!(ps, plt)
+        GC.gc()
+    end
+    plot(ps..., layout = length(ps))
 end

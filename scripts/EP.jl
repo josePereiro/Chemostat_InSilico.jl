@@ -11,7 +11,7 @@ using Test
 
 ## ------------------------------------------------------------------
 # Marginals
-function vatp_marginal_probs(pol, beta; n = Int(1e5))
+function vatp_marginal_pdf_probs(pol, beta; n = Int(1e5))
     
     vatp0, vatp1 = vatp_global_min(pol), vatp_global_max(pol)
     

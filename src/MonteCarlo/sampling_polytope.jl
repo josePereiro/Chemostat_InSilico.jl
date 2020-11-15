@@ -10,7 +10,7 @@ function generate_random_cells(p, n = 1;
     chuncks = get_chuncks(1:n, nthreads(); th = threading_th)
     rvatps, rvgs = Vector{Float64}(undef, n), Vector{Float64}(undef, n)
 
-    verbose && (prog = Progress(n, "Generating -t$(min(length(chuncks), nthreads()))... "); 
+    verbose && (prog = Progress(n; desc = "Generating -t$(min(length(chuncks), nthreads()))... ", dt = 0.5); 
         count = zeros(Int, nthreads()))
     @threads for chunck in chuncks
         for i in chunck

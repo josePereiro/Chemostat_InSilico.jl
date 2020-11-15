@@ -52,14 +52,16 @@ using Test
 
     ## ------------------------------------------------------------------
     @testset "MaxEnt" begin
-        @testset "vatp_marginal " begin
+        @testset "vatp_marginal_pdf " begin
             for it in 1:100
-                xi = rand()*1e3 + 3e-2
-                pol = Polytope(;xi)
-                beta = rand()*1e3 + 1e-3
-                rvatp, probs = vatp_marginal(pol, beta; n = Int(1e5))
-                @test length(rvatp) == length(probs)
-                @test isapprox(sum(probs), 1.0; atol = 1e-7)
+                for marginal_pdf in [vatp_marginal_pdf, vg_marginal_pdf]
+                    xi = rand()*1e3 + 3e-2
+                    pol = Polytope(;xi)
+                    beta = rand()*1e3 + 1e-3
+                    rang, probs = marginal_pdf(pol, beta; n = Int(1e5))
+                    @test length(rang) == length(probs)
+                    @test isapprox(sum(probs .* step(rang)), 1.0; atol = 1e-7)
+                end
             end
         end
     end
