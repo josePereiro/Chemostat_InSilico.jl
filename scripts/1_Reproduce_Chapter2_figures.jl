@@ -15,56 +15,6 @@ MCdata_filename(mutr, ncells, ciodiff) = joinpath(DATA_DIR,
     savename("Ch2-MC-Data", (;mutr, ncells, ciodiff), "bson"))
 
 ## ------------------------------------------------------------------
-# SIMULATION FUNCTION
-function run_simulation(pol, mut_rates, ncells, ciodiff; 
-        threading_th = Int(1e5), gdth = 1e-5, verbose = true)
-    betas = []
-    niters = floor(Int, ncells .* 10.0^ciodiff)
-    for mutr in mut_rates
-        filename = MCdata_filename(mutr, ncells, ciodiff)
-        if isfile(filename) 
-            # Checking files
-            msg = "Data file already exist, skipping MC. To force recomputation delete the file"
-            verbose && @info msg filename filesize(filename)
-            MCvatps, MCvgs = load_data(filename)
-            cells = Cell.([pol], MCvatps, MCvgs)
-        else
-            # Monte Carlo
-            verbose && @info "Running Montecarlo " ncells ciodiff mutr niters  
-            pinking_fun(cell) = rand() < vatp(cell)/vatp_global_max(pol)
-            cells = runMC(;p = pol, pinking_fun, ncells, niters, mutr, 
-                    threading_th, verbose)
-            
-            save_data(filename, (vatp.(cells), vg.(cells)))
-            verbose && @info "Data saved" filename filesize(filename)
-        end
-        MC_vatp_mean = mean(vatp.(cells))
-
-        # searching MaxEnt beta
-        target = [MC_vatp_mean]
-        verbose && @info "Running Gradient descent " MC_vatp_mean
-        x0 = [0.0]
-        x1 = [10.0] 
-        C = [500.0]
-        MaxEnt_vatp_mean = nothing
-        beta = grad_desc(;target, x0, x1, C, th = gdth, verbose) do x
-            beta = first(x)
-            rvatp, probs = vatp_marginal_pdf(pol, beta; n = Int(1e5))   
-            Δvatp = step(rvatp)  
-            MaxEnt_vatp_mean = sum(probs .* rvatp .* Δvatp)       
-            return MaxEnt_vatp_mean
-        end |> first
-        push!(betas, max(0.0, beta))
-
-        verbose && @info "beta found" beta MC_vatp_mean MaxEnt_vatp_mean
-        verbose && println()
-        GC.gc()
-    end
-    @assert length(betas) == length(mut_rates)
-    return betas
-end
-
-## ------------------------------------------------------------------
 # PLOTS
 
 ## ------------------------------------------------------------------
@@ -91,7 +41,8 @@ function plot_f2_2_f2_4(pol, mut_rates, betas, ncells, ciodiff)
 
             normalize = :pdf
             alpha = 0.8
-            title = string("mutr: ", round(mutr, digits = 3), " beta: ", round(beta, digits = 3), "\nciodiff: ", round(ciodiff, digits = 3))
+            title = string("mutr: ", round(mutr, digits = 3), " beta: ", 
+                round(beta, digits = 0), "\nciodiff: ", round(ciodiff, digits = 3))
             plt = plot(;title, xlabel = nameof(vfun))
             histogram!(plt, vfun.(cells); normalize, label = "", color = :black)
             plot!(plt, vrange, probs; lw = 3, label = "")
@@ -164,21 +115,85 @@ end
 
 ## ------------------------------------------------------------------
 # RUN SIMULATIONS
-# Polytope
 let
     pol = Polytope()
     mut_rates = 0.0:0.1:1.0
-    ncells = Int(1e5)
-    ciodiffs = collect(-2:3)
+    ncells = Int(1e6)
+    @show iters_bkpoints = Int.(ncells .* 10.0 .^ (-2:3))
+    niters = maximum(iters_bkpoints)
     threading_th = Int(1e5)
     gdth = 1e-5
-    for ciodiff in ciodiffs
-        betas = run_simulation(pol, mut_rates, ncells, ciodiff; 
-            threading_th, gdth, verbose = true)    
+    verbose = true
+    betas = []
+    
+    # Monte Carlo
+    for mutr in mut_rates
+
+        # Check files
+        all_files_found = true
+        for it in iters_bkpoints
+            ciodiff = log10(ncells) - log10(it)
+            filename = MCdata_filename(mutr, ncells, ciodiff)
+            isfile(filename) ? 
+                (@info string(basename(filename), " found")) : 
+                (@warn string(basename(filename), " missing"); all_files_found = false)
+        end
+        if all_files_found
+            @info "All files founded, skkiping simulation"  mutr
+        else
+            verbose && @info "Running Montecarlo " ncells mutr niters  
+            pinking_fun(cell) = rand() < vatp(cell)/vatp_global_max(pol)
+            MCkwargs = (;p = pol, pinking_fun, ncells, niters, mutr, threading_th, verbose)
+            runMC(;MCkwargs...) do it, cells
+                # This function will be called in many threads
+                # So, be caution about races
+                if (it in iters_bkpoints) # TODO improve this, avoid searching
+                    ciodiff = log10(ncells) - log10(it)
+                    
+                    filename = MCdata_filename(mutr, ncells, ciodiff)
+                    save_data(filename, (vatp.(cells), vg.(cells)))
+                    @assert isfile(filename)
+                end    
+                return false
+            end
+        end
+    end 
+
+    # Run MaxEnt for each it breakpoint and plot
+    for it in iters_bkpoints
+
+        ciodiff = log10(ncells) - log10(it)
+        
+        # Searching MaxEnt beta
+        betas = []
+        for mutr in mut_rates
+            # Load MC Data
+            filename = MCdata_filename(mutr, ncells, ciodiff)
+            MCvatps, MCvgs = load_data(filename)
+            cells = Cell.([pol], MCvatps, MCvgs)
+            MC_vatp_mean = mean(vatp.(cells))
+
+            target = [MC_vatp_mean]
+            verbose && @info "Running Gradient descent " mutr ciodiff MC_vatp_mean
+            x0 = [0.0]
+            x1 = [10.0] 
+            C = [500.0]
+            MaxEnt_vatp_mean = nothing
+            beta = grad_desc(;target, x0, x1, C, th = gdth, verbose) do x
+                beta = first(x)
+                rvatp, probs = vatp_marginal_pdf(pol, beta; n = Int(1e5))   
+                Δvatp = step(rvatp)  
+                MaxEnt_vatp_mean = sum(probs .* rvatp .* Δvatp)       
+                return MaxEnt_vatp_mean
+            end |> first
+            push!(betas, max(0.0, beta))
+        end
 
         # Ploting
         plot_f2_2_f2_4(pol, mut_rates, betas, ncells, ciodiff)
         plot_f2_3(mut_rates, betas, ncells, ciodiff)
         plot_f2_5(pol, mut_rates, betas, ncells, ciodiff)
+
     end
+    
 end
