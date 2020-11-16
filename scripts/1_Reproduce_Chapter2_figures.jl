@@ -7,7 +7,7 @@ using Chemostat_Dynamics.Utilities
 using Chemostat_Dynamics.MonteCarlo
 using Chemostat_Dynamics.MaxEnt
 using Plots
-using GR
+import GR
 GR.inline("png")
 using Statistics
 using Base.Threads
