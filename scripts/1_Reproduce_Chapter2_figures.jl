@@ -9,6 +9,7 @@ using Chemostat_Dynamics.MaxEnt
 using Plots
 using Statistics
 using Base.Threads
+using ProgressMeter
 
 ## ------------------------------------------------------------------
 # TOOLS
@@ -32,7 +33,7 @@ MCfig_filename(name, dirtuple; wkargs...) =
 # Figura  2.2:  Comparacion  entre  la  distribucion  de  MaxEnt  (curva  azul)  
 # y la  distribucion  estacionaria del modelo estocastico (histograma) para vatpy varios valores de
 # Figura 2.4: Distribucion de vglc para diferentes valores demutr.
-function plot_f2_2_f2_4(pol, mut_rates, betas, ncells, ciodiff, mstgth)
+function plot_f2_2_f2_4(;pol, mut_rates, betas, ncells, ciodiff, mstgth, verbose = true)
     
     dirtuple = (;ncells)
     for (fig, marginal_fun, vfun) in [
@@ -51,7 +52,7 @@ function plot_f2_2_f2_4(pol, mut_rates, betas, ncells, ciodiff, mstgth)
             Δv = step(vrange)
             MaxEnt_v_mean = sum(probs .* vrange .* Δv)
             MC_v_mean = mean(vfun.(cells))
-            @info "Ploting $(fig)" mutr beta ciodiff MC_v_mean MaxEnt_v_mean
+            verbose && @info "Ploting $(fig)" mutr beta ciodiff MC_v_mean MaxEnt_v_mean
 
             normalize = :pdf
             alpha = 0.8
@@ -75,8 +76,8 @@ end
 
 ## ------------------------------------------------------------------
 # Figura 2.3: Comparacion entre β y la tasa de mutacion
-function plot_f2_3(mut_rates, betas, ncells, ciodiff, mstgth)
-    @info "Ploting 2.3"
+function plot_f2_3(;mut_rates, betas, ncells, ciodiff, mstgth, verbose = true)
+    verbose && @info "Ploting 2.3"
     title = string("ciodiff: ", round(ciodiff, digits = 2), " mstgth: ", round(mstgth, digits = 3))
     plt = plot(mut_rates, betas; title,
         xlabel = "mut rate", ylabel = "beta", 
@@ -92,7 +93,7 @@ end
 # Figura 2.5: Velocidad media de consumo de glucosa vglc y de secrecion 
 # de lactato vlac, inferidas por MaxEnt (ME) comparados con los valores 
 # obtenidos de la simulacion en estado estacionario.
-function plot_f2_5(pol, mut_rates, betas, ncells, ciodiff, mstgth)
+function plot_f2_5(;pol, mut_rates, betas, ncells, ciodiff, mstgth, verbose = true)
     
     title = string("Correlation mean(vg)", 
         "\nciodiff: ", round(ciodiff, digits = 2), " mstgth: ", round(mstgth, digits = 3))
@@ -118,7 +119,7 @@ function plot_f2_5(pol, mut_rates, betas, ncells, ciodiff, mstgth)
         MC_vatp_mean = mean(vatp.(cells))
         MaxEnt_vatp_mean = sum(vatpprobs .* rvatp .* Δvatp)
 
-        @info "Ploting 2.5" mutr beta MC_vg_mean MaxEnt_vg_mean MC_vatp_mean MaxEnt_vatp_mean
+        verbose && @info "Ploting 2.5" mutr beta MC_vg_mean MaxEnt_vg_mean MC_vatp_mean MaxEnt_vatp_mean
 
         scatter!(vgplt, [MaxEnt_vg_mean], [MC_vg_mean]; 
             color = :black, label = "", xlabel = "vatp MaxEnt", ylabel = "vatp MC")
@@ -140,13 +141,13 @@ end
 let
     pol = Polytope()
     mut_rates = 0.0:0.1:1.0 # mutation rate
-    mstgths = 0.3:0.1:1.0 # mutation strengths
+    mstgths = collect(0.4:0.2:1.0) # mutation strengths
     nmstgth = 0.0 # not mutation strength
-    ncells = Int(5e5)
-    @show iters_bkpoints = floor.(Int, ncells .* 10.0 .^ (-1:0.5:3)) |> sort
+    ncells = Int(1e6)
+    @show iters_bkpoints = floor.(Int, ncells .* 10.0 .^ (-1:0.1:3)) |> sort
     curr_bkpoint = 1
     # This must be set so that all breakpoints are possible
-    @show feedback_frec = floor(Int, (minimum(iters_bkpoints) ÷ nthreads()) * 0.95) 
+    @show feedback_frec = floor(Int, (minimum(iters_bkpoints) ÷ nthreads()) * 1.05) 
     niters = maximum(iters_bkpoints)
     threading_th = Int(1e5)
     gdth = 1e-5
@@ -161,19 +162,18 @@ let
         for it in iters_bkpoints
             ciodiff = log10(ncells) - log10(it)
             filename = MCdata_filename(dirtuple; mutr, ciodiff, mstgth)
-            isfile(filename) ? 
-                (@info string(basename(filename), " found")) : 
-                (@info string(basename(filename), " missing"); all_files_found = false)
+            !isfile(filename) &&
+                (@info string(basename(filename), " missing"); all_files_found = false; break)
         end
         if all_files_found
-            @info "All files founded, skkiping simulation"  mutr
+            @info "All files founded, skkiping simulation"  mstgth mutr
         else
-            verbose && @info "Running Montecarlo " ncells mutr niters mstgth
+            verbose && @info "Running Montecarlo " ncells mstgth mutr niters 
 
             # Functions
             pinking_fun(cell) = rand() < vatp(cell)/vatpU(pol)
             function feedback_fun(it, cells)
-                # Here I take samples at approx iters_bkpoints times
+                # Here I take samples at approx iters_bkpoints
                 if curr_bkpoint <= length(iters_bkpoints)
                     bkpoint = iters_bkpoints[curr_bkpoint]
                     if it >= bkpoint 
@@ -189,20 +189,28 @@ let
             
             at_mutate(parent_cell) = generate_similar_cell(parent_cell, rand() * mstgth * Δvatp(pol))
             at_notmutate(parent_cell) = generate_similar_cell(parent_cell, rand() * nmstgth * Δvatp(pol))
-            runMC(;p = pol, ncells, niters, mutr, 
-                threading_th, pinking_fun, 
-                feedback_fun, feedback_frec,
-                at_mutate, at_notmutate,
-                verbose
-            ) 
+            @time begin 
+                runMC(;p = pol, ncells, niters, mutr, 
+                    threading_th, pinking_fun, 
+                    feedback_fun, feedback_frec,
+                    at_mutate, at_notmutate,
+                    verbose
+                ) 
+                println(); flush.([stdout, stderr])
+            end
             curr_bkpoint = 1
         end
     end 
 
     # Run MaxEnt for each it breakpoint and plot
-    for it in iters_bkpoints
+    verbose = false
+    n = length(iters_bkpoints) * length(mstgths) * length(mut_rates)
+    prog = Progress(n; desc = "Maxent-Ploting ... ")
+    c = 1
+    for it in collect(iters_bkpoints)
 
         ciodiff = log10(ncells) - log10(it)
+        showvalues = Dict()
         
         # Searching MaxEnt beta
         for mstgth in mstgths
@@ -213,6 +221,7 @@ let
                 MCvatps, MCvgs = load_data(filename)
                 cells = Cell.([pol], MCvatps, MCvgs)
                 MC_vatp_mean = mean(vatp.(cells))
+                showvalues[:MC_vatp_mean] = MC_vatp_mean
 
                 target = [MC_vatp_mean]
                 verbose && @info "Running Gradient descent " mutr ciodiff mstgth MC_vatp_mean
@@ -228,14 +237,23 @@ let
                     return MaxEnt_vatp_mean
                 end |> first
                 push!(betas, max(0.0, beta))
+                showvalues[:MaxEnt_vatp_mean] = MaxEnt_vatp_mean
+                showvalues[:beta] = beta
+
+                update!(prog, c; showvalues)
+                c += 1
             end
 
             # Ploting
-            plot_f2_2_f2_4(pol, mut_rates, betas, ncells, ciodiff, mstgth)
-            plot_f2_3(mut_rates, betas, ncells, ciodiff, mstgth)
-            plot_f2_5(pol, mut_rates, betas, ncells, ciodiff, mstgth)
+            update!(prog, c; showvalues = Dict(:ploting => "plot_f2_2_f2_4"))
+            plot_f2_2_f2_4(;pol, mut_rates, betas, ncells, ciodiff, mstgth, verbose)
+            update!(prog, c; showvalues = Dict(:ploting => "plot_f2_3"))
+            plot_f2_3(;mut_rates, betas, ncells, ciodiff, mstgth, verbose)
+            update!(prog, c; showvalues = Dict(:ploting => "plot_f2_5"))
+            plot_f2_5(;pol, mut_rates, betas, ncells, ciodiff, mstgth, verbose)
 
-        end
-    end
-    
+        end # for mstgth in mstgths
+    end # for it in collect(iters_bkpoints)
+    finish!(prog)
 end
+
