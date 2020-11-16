@@ -144,7 +144,7 @@ let
     mstgths = collect(0.4:0.2:1.0) # mutation strengths
     nmstgth = 0.0 # not mutation strength
     ncells = Int(1e6)
-    @show iters_bkpoints = floor.(Int, ncells .* 10.0 .^ (-1:0.1:3)) |> sort
+    @show iters_bkpoints = floor.(Int, ncells .* 10.0 .^ (-1:0.5:3)) |> sort
     curr_bkpoint = 1
     # This must be set so that all breakpoints are possible
     @show feedback_frec = floor(Int, (minimum(iters_bkpoints) ÷ nthreads()) * 1.05) 
