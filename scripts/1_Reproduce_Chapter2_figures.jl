@@ -141,7 +141,7 @@ end
 let
     pol = Polytope()
     mut_rates = 0.0:0.1:1.0 # mutation rate
-    mstgths = collect(0.4:0.2:1.0) # mutation strengths
+    mstgths = [(0.4:0.2:1.0); Inf] # mutation strengths
     nmstgth = 0.0 # not mutation strength
     ncells = Int(1e6)
     @show iters_bkpoints = floor.(Int, ncells .* 10.0 .^ (-1:0.5:3)) |> sort
