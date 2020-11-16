@@ -13,15 +13,29 @@ struct Polytope
     # chemostat
     cg::Float64
     xi::Float64
-    # Default
-    Polytope(;Lr = 0.0, Ur = 0.45, Lg = 0.0, Ug = 0.5, Ll = -100.0, Ul = 0.0, 
+    # constants
+    vgGL::Float64 # vg global lower bound
+    vgGU::Float64 # vg global upper bound
+    ΔvgG::Float64 # vg global delta
+    vatpGL::Float64 # vatp global lower bound
+    vatpGU::Float64 # vatp global upper bound
+    ΔvatpG::Float64 # vatp global delta
+
+
+    # Default Constructor
+    function Polytope(;Lr = 0.0, Ur = 0.45, Lg = 0.0, Ug = 0.5, Ll = -100.0, Ul = 0.0, 
                 Nb = 348.0, Nf = 2, Nr = 18,
-                cg = 15, xi = 100.0) = 
-            new(Lr, Ur, Lg, Ug, Ll, Ul, Nb, Nf, Nr, cg, xi)
+                cg = 15, xi = 100.0)
+        
+        vgGL = Lg
+        vgGU = min(Ug, cg / xi)
+        vatpGL = Nf * vgGL
+        vatpGU = vgGU * Nf * (Nr + 1)
+
+        new(Lr, Ur, Lg, Ug, Ll, Ul, Nb, Nf, Nr, cg, xi, 
+            vgGL, vgGU, vgGU - vgGL, vatpGL, vatpGU, vatpGU - vatpGL)
+    end
 end
 
-function is_inpolytope(vatp::Float64, vg::Float64, p::Polytope)
-    vglb, vgub = vg_local_min(vatp, p), vg_local_max(vatp, p)
-    vatplb, vatpub = vatp_local_min(vglb, p), vatp_local_max(vgub, p)
-    vglb <= vg <= vgub && vatplb <= vatp <= vatpub
-end
+is_inpolytope(vatp::Float64, vg::Float64, p::Polytope) =
+    vgL(vatp, p) <= vg <= vgU(vatp, p) && vatpL(vg, p) <= vatp <= vatpU(vg, p)

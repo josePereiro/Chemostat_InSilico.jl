@@ -12,7 +12,7 @@ using Plots
     n = 1_000_000
     p = Polytope()
     cells_pool = generate_random_cells(p, n; verbose = false)
-    mvatp = vatp_global_max(p)
+    mvatp = vatpU(p)
     pcells = pick_cells(n, cells_pool) do cell
         prob = vatp(cell)/mvatp
         return rand() <= prob
@@ -37,7 +37,7 @@ end
     n = 10_000
     p = Polytope()
     cells_pool = generate_random_cells(p, n; verbose = false)
-    mvatp = vatp_global_max(p)
+    mvatp = vatpU(p)
     pcells = pick_cells(n, cells_pool) do cell
         prob = vatp(cell)/mvatp
         return rand() <= prob
@@ -79,7 +79,7 @@ end
         
         # simulating 
         p = Polytope()
-        pinking_fun(cell) = rand() < vatp(cell)/vatp_global_max(p)
+        pinking_fun(cell) = rand() < vatp(cell)/vatpU(p)
         threading_th = Int(1e5)
         cells = runMC(;p, pinking_fun, ncells, niters, mutr, threading_th, verbose = true)
 
@@ -109,7 +109,7 @@ end
         @info "Running Simulation " ncells niters mutr
         
         # simulating 
-        pinking_fun(cell) = rand() < vatp(cell)/vatp_global_max(pol)
+        pinking_fun(cell) = rand() < vatp(cell)/vatpU(pol)
         threading_th = Int(1e5)
         cells = runMC(;p = pol, pinking_fun, ncells, niters, mutr, threading_th, verbose = true)
 

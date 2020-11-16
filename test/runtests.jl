@@ -12,12 +12,12 @@ using Test
     @testset "Polytope" begin
         p = Polytope() # Default params
         # The polytope is pointy in this regions
-        @test Δvg(vatp_global_max(p), p) == 0.0
-        @test Δvg(vatp_global_min(p), p) == 0.0
-        @test Δvatp(vg_global_min(p), p) == 0.0
+        @test Δvg(vatpU(p), p) == 0.0
+        @test Δvg(vatpL(p), p) == 0.0
+        @test Δvatp(vgL(p), p) == 0.0
 
         # The polytope is NOT pointy in this regions_
-        @test Δvatp(vg_global_max(p), p) > 0.0
+        @test Δvatp(vgU(p), p) > 0.0
     end
 
     ## ------------------------------------------------------------------
@@ -28,7 +28,7 @@ using Test
         @test all(is_inpolytope.(cells_pool))
         @test all(map((cp) -> cp === p, getfield.(cells_pool, :p)))
 
-        mvatp = vatp_global_max(p)
+        mvatp = vatpU(p)
         pcells = pick_cells(n, cells_pool) do cell
             prob = vatp(cell)/mvatp
             return rand() <= prob
