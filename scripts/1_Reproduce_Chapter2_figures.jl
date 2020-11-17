@@ -189,8 +189,8 @@ let
                 return false
             end
             
-            at_mutate(parent_cell) = generate_similar_cell(parent_cell, rand() * mstgth * Δvatp(pol))
-            at_notmutate(parent_cell) = generate_similar_cell(parent_cell, rand() * nmstgth * Δvatp(pol))
+            at_mutate(parent_cell) = generate_similar_cell(parent_cell, mstgth * Δvatp(pol))
+            at_notmutate(parent_cell) = generate_similar_cell(parent_cell, nmstgth * Δvatp(pol))
             @time begin 
                 runMC(;p = pol, ncells, niters, mutr, 
                     threading_th, pinking_fun, 
