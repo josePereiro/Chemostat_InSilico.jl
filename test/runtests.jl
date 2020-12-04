@@ -55,8 +55,8 @@ using Test
         @testset "vatp_marginal_pdf " begin
             for it in 1:100
                 for marginal_pdf in [vatp_marginal_pdf, vg_marginal_pdf]
-                    xi = rand()*1e3 + 3e-2
-                    pol = Polytope(;xi)
+                    X = rand()*1e3 + 3e-2
+                    pol = Polytope(;X)
                     beta = rand()*1e3 + 1e-3
                     rang, probs = marginal_pdf(pol, beta; n = Int(1e5))
                     @test length(rang) == length(probs)

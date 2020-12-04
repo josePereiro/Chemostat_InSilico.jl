@@ -1,5 +1,6 @@
-function plot_polytope(p)
-    plt = plot(xlabel = "vatp", ylabel = "vg")
+function plot_polytope!(plt, p::Polytope)
+    
+    plot!(plt, xlabel = "vatp", ylabel = "vg")
     #locals
     kwargs = (;color = :black, lw = 3, label = "")
     lb, ub = vatpL(p), vatpU(p)
@@ -20,3 +21,5 @@ function plot_polytope(p)
     plot!(ylim = [vgL(p) - ymargin, vgU(p) + ymargin])
     plt
 end
+
+plot_polytope!(plt, p::ΔPolytope) = plot_polytope!(plt, p.p)

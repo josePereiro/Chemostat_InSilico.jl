@@ -28,5 +28,3 @@ function vatp_marginal_pdf_probs(pol, beta; n = Int(1e5))
     @assert isapprox(sum(probs), 1.0; atol = 1e-7)
     return rvatp, probs
 end
-
-
