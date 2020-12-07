@@ -15,9 +15,19 @@ end
 
 cache_file(name, args...) = joinpath(@__DIR__, string(name, hash(args), ".jld"))
 
-function vgvatp_caches(net, θvg, θvatp, 
-        vg_idx, vatp_idx)  
-    
+function fill_vl_vs_caches!(vl_cache, z_cache, net, θvg, θvatp, 
+        vg_idx, vatp_idx, vl_idx, obj_idx; MAX_BOUND = 10.0)  
+
+    # Open network
+    # TODO Detect exchange and open it
+    net = deepcopy(net)
+    net.ub[[vg_idx, vl_idx]] .= MAX_BOUND
+    lb, ub = fva(net)
+    net.lb .= lb
+    net.ub .= ub
+
+    # TODO: make general cache
+    cache = Dict{Tuple{Float64,Float64}, Vector{Float64}}()
     # ranges
     vatpL, vatpU = fva(net, vatp_idx)
     vatp_range = vrange(vatpL, vatpU, θvatp)
@@ -28,23 +38,25 @@ function vgvatp_caches(net, θvg, θvatp,
         end
         vg_ranges[vatp] = vrange(vgL, vgU, θvg)
     end
-    
-    prog2 = Progress(sum(length.(values(vg_ranges))); 
-        desc = "Caching... ", dt = 0.1)
-    cache = Dict{Tuple{Float64,Float64}, Vector{Float64}}()
+    N = sum(length.(values(vg_ranges)))
+    prog2 = Progress(N; 
+        desc = "Caching $N fluxs ... ", dt = 0.1)
     for vatp in vatp_range
         for vg in vg_ranges[vatp]
             fixxing(net, vatp_idx, vatp) do 
                 fixxing(net, vg_idx, vg) do 
-                    cache[(vg, vatp)] = fba(net, vg_idx)
+                    sol = fba(net, obj_idx)
+                    cache[(vg, vatp)] = sol
+                    vl_cache[(vg, vatp)] = sol[vl_idx]
+                    z_cache[vatp] = sol[obj_idx]
                     next!(prog2)                
                     return nothing
                 end
             end
         end
     end
+    serialize(joinpath(@__DIR__, "cache.jld"), cache)
     finish!(prog2)
-    return cache
 end
 
 ## ---------------------------------------------------------
@@ -78,17 +90,20 @@ function run_simulation(;
     vg_idx = rxnindex(net, "gt")
     vl_idx = rxnindex(net, "lt")
     obj_idx = rxnindex(net, "biom")
-    net.ub[vg_idx] = max(net.lb[vg_idx], (Vg * sg) / (Kg + sg))
+    net.ub[vg_idx], net.lb[vg_idx]
     net.ub[vl_idx] = max(net.lb[vl_idx], (Vl * sl) / (Kl + sl))
-
+    
     ## ---------------------------------------------------------
     # Polytope cache
-    cfile = cache_file("cache", hash(net), θvatp, θvg)
+    cfile = cache_file("polytope", hash(net), θvatp, θvg)
     if !isfile(cfile)
-        cache = vgvatp_caches(net, θvg, θvatp, vg_idx, vatp_idx)
-        serialize(cfile, cache)
+        vl_cache = Dict{Tuple{Float64,Float64}, Float64}()
+        z_cache = Dict{Float64, Float64}()
+        fill_vl_vs_caches!(vl_cache, z_cache, net, θvg, θvatp, 
+            vg_idx, vatp_idx, vl_idx, obj_idx; MAX_BOUND = 10 * max(Vg, Vl))
+        serialize(cfile, (vl_cache, z_cache))
     else
-        cache = deserialize(cfile)
+        vl_cache, z_cache = deserialize(cfile)
     end
     
     sl_ts = []
@@ -96,6 +111,9 @@ function run_simulation(;
     X_ts = []
     Xb = Dict{Tuple{Float64,Float64}, Float64}()
 
+    ## ---------------------------------------------------------
+    net.ub[vg_idx] = max(net.lb[vg_idx], (Vg * sg) / (Kg + sg))
+    net.ub[vl_idx] = max(net.lb[vl_idx], (Vl * sl) / (Kl + sl))
     
     prog = Progress(niters)
     for it in 1:niters
@@ -134,7 +152,15 @@ function run_simulation(;
                 Σvg__X[vatp] += lX
             end
 
-            z[vatp] = cache[(first(vg_range), vatp)][obj_idx]
+            if haskey(z_cache, vatp)
+                z[vatp] = z_cache[vatp]
+            else
+                z[vatp] = fixxing(net, vatp_idx, vatp) do 
+                    fba(net, vg_idx)[obj_idx]
+                end
+                z_cache[vatp] = z[vatp]
+            end
+
             vgN[vatp] = length(vg_range)
         end
 
@@ -173,8 +199,17 @@ function run_simulation(;
         for vatp in vatp_range
             for vg in vg_ranges[vatp]
                 k = (vg, vatp)
-                vl = cache[k][vl_idx]
 
+                if haskey(vl_cache, k)
+                    vl = vl_cache[k]
+                else
+                    vl = fixxing(net, vatp_idx, vatp) do 
+                            fixxing(net, vg_idx, vg) do 
+                                fba(net, obj_idx)[vl_idx]
+                            end
+                    end
+                    vl_cache[k] = vl
+                end
                 lX = Xb[k]
                 Σ_vatp_vg__vg_X += vg * lX
                 Σ_vatp_vg__vl_X += vl * lX
@@ -220,15 +255,25 @@ function run_simulation(;
 end
 
 ## ---------------------------------------------------------
+
 let
     X_ts, sg_ts, sl_ts, Xb = run_simulation(
+        θvatp = 2,
+        θvg = 3,
         D = 5e-4, 
         X0 = 5e-5, 
         Xmin = 1e-20, 
-        niters = 100, 
-        damp = 0.9,
+        niters = 2000, 
+        damp = 0.95,
         ϵ = 0.0,
     )
+
+    serialize(joinpath(@__DIR__, "last_sim.jld"), (X_ts, sg_ts, sl_ts, Xb))
+end
+
+## ---------------------------------------------------------
+let
+    X_ts, sg_ts, sl_ts, Xb = deserialize(joinpath(@__DIR__, "temp.jld"));
     p1 = plot(xlabel = "time", ylabel = "conc")
     plot!(p1, sg_ts; label = "sg", lw = 3)
     plot!(p1, sl_ts; label = "sl", lw = 3)

@@ -1,7 +1,7 @@
 # Store network information
 # TODO: echenolize model
 
-
+const ABS_MAX_BOUND = 1000.0 # abs bound
 struct MetNet
 
     ## LP (original) 
@@ -32,7 +32,7 @@ function ToyModel()
     net[:mets] = ["G", "E", "P", "L", "AUX1"]
     net[:b] =    [0.0, 0.0, 0.0, 0.0, 0.0] # const exchanges
     
-    AB = 1000.0 # abs bound
+    AB = ABS_MAX_BOUND
     net[:rxns] = [ "gt"  , "ferm" , "resp" , "ldh" ,  "lt" ,    "biom"    , "atpm" , "vatp" ];
     net[:lb]   = [ 0.0   ,  0.0   ,  0.0   ,  0.0  ,  -AB  ,     0.0      ,  0.5   ,  0.0   ];
     net[:ub]   = [ 0.5   ,  AB    ,  0.45  ,  AB   ,   0.0 ,      AB      ,   AB   ,  AB    ];
