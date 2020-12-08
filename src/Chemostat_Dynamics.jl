@@ -1,6 +1,7 @@
 module Chemostat_Dynamics
 
 export PROJECT_NAME, PROJECT_DIR, FIGURES_DIR, DATA_DIR, CACHE_DIR
+export CH3_DATA_DIR, CH3_FIGURES_DIR
 
 include("Meta/Meta.jl")
 # include("Utilities/Utilities.jl")
