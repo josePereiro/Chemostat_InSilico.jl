@@ -1,8 +1,8 @@
 module Chemostat_Dynamics
 
-# export PROJECT_NAME, PROJECT_DIR, FIGURES_DIR, DATA_DIR
+export PROJECT_NAME, PROJECT_DIR, FIGURES_DIR, DATA_DIR, CACHE_DIR
 
-# include("Meta/Meta.jl")
+include("Meta/Meta.jl")
 # include("Utilities/Utilities.jl")
 # include("Polytopes/Polytopes.jl")
 # include("MonteCarlo/MonteCarlo.jl")
