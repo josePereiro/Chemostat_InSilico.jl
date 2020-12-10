@@ -5,7 +5,7 @@ const MIN_SENSE = 1.0
 ## -------------------------------------------------------------------
 function fba(S, b, lb, ub, c; solver = CLP_SOLVER)
 
-    sol = linprog(
+    LP = linprog(
         c, # Opt sense vector 
         S, # Stoichiometric matrix
         b, # row lb
@@ -14,7 +14,7 @@ function fba(S, b, lb, ub, c; solver = CLP_SOLVER)
         ub, # column ub
         solver
     )
-    return sol.sol
+    return isempty(LP.sol) ? zeros(length(lb)) : LP.sol
 end
 
 function fba(S, b, lb, ub, c, idx, sense; solver = CLP_SOLVER)

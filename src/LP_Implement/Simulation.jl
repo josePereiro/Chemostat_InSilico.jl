@@ -1,4 +1,11 @@
-struct SimParams
+struct SimModel
+    # net
+    net::MetNet              # auxiliar metabolic network
+    vatp_idx::Int
+    vg_idx::Int
+    vl_idx::Int
+    obj_idx::Int
+
     # Sim params
     θvatp::Int               # exactness of vatp discretization dvatp = 10.0^-(θvatp)
     θvg::Int                 # exactness of vatp discretization dvatp = 10.0^-(θvatp)
@@ -20,37 +27,55 @@ struct SimParams
 
     niters::Int              # simulation iteration number
     damp::Float64            # numeric damp
-    cache_marginf::Float64   # cache offset
 
-    SimParams(;θvatp = 2, θvg = 3, 
-            X0 = 1e-3, Xmin = 1e-20, D = 1e-2, 
+    # Chemostat state
+    sl_ts::Vector{Float64}
+    sg_ts::Vector{Float64}
+    X_ts::Vector{Float64}
+    Xb::Dict{Float64, Dict{Float64, Float64}}
+
+    function SimModel(;net = ToyModel(), θvatp = 2, θvg = 3, 
+            X0 = 1e-5, Xmin = 1e-20, D = 1e-2, 
             cg = 15.0, sg0 = 15.0, Kg = 0.5, Vg = 0.5, 
             cl = 0.0, sl0 = 0.0, Kl = 0.5, Vl = 0.0, 
             ϵ = 0.0, 
-            niters = 200, damp = 0.9, cache_marginf = 0.2
-        ) = new(θvatp, θvg, X0, Xmin, D, cg, sg0, Kg, Vg, cl, sl0, Kl, Vl, 
-                ϵ, niters, damp, cache_marginf)
+            niters = 200, damp = 0.9,
+            sg = Ref{Float64}(sg0), sl = Ref{Float64}(sl0),
+            sl_ts = [], sg_ts = [], X_ts = [],
+            Xb = Dict{Float64, Dict{Float64, Float64}}(),
+            vatp_ider = "vatp",
+            vg_ider = "gt",
+            vl_ider = "lt",
+            obj_ider = "biom"
+        ) 
+
+        vatp_idx = rxnindex(net, vatp_ider)
+        vg_idx = rxnindex(net, vg_ider)
+        vl_idx = rxnindex(net, vl_ider)
+        obj_idx = rxnindex(net, obj_ider)
+
+        new(net, vatp_idx, vg_idx, vl_idx, obj_idx,
+            θvatp, θvg, X0, Xmin, D, 
+            cg, sg0, Kg, Vg, 
+            cl, sl0, Kl, Vl, 
+            ϵ, niters, damp,  
+            sl_ts, sg_ts, X_ts, Xb
+        )
+    end
 end
 
-function SimParams(P::SimParams; kwargs...)
-    d = Dict{Symbol, Any}()
-    for k in fieldnames(SimParams)
-        d[k] = getfield(P, k)
-    end
-    for (k, v) in kwargs
-        d[k] = v
-    end
-    return SimParams(;d...)
-end 
+# function SimModel(M::SimModel; kwargs...)
+#     d = Dict{Symbol, Any}()
+#     for k in fieldnames(SimModel)
+#         d[k] = getfield(M, k)
+#     end
+#     for (k, v) in kwargs
+#         d[k] = v
+#     end
+#     # return SimModel(;d...)
+#     d
+# end 
 
-## ---------------------------------------------------------
-# TODO: Finish this  
-# struct SimOut
-#     sl_ts = []
-#     sg_ts = []
-#     X_ts = []
-#     Xb = Dict{Float64, Dict{Float64, Float64}}()
-# end
 ## ---------------------------------------------------------  
 function vrange(L, U, d::Int)
     dx = 10.0^(-d)
@@ -59,58 +84,73 @@ function vrange(L, U, d::Int)
     return x0:dx:x1
 end
 
-cache_file(name, args...) = joinpath(CACHE_DIR, string(name, hash(args), ".jld"))
-
-function vgvatp_cache(net, θvg, θvatp, 
-        vg_idx, vatp_idx, obj_idx; 
-        cache_marginf = 0.5)  
-
-    # Open network
-    net = deepcopy(net)
-    lb, ub = fva(net)
-    net.lb .= lb
-    net.ub .= ub
-    idxs = [vg_idx, vatp_idx]
-    margin = cache_marginf .* abs.(net.ub[idxs] .- net.lb[idxs])
-    net.lb[idxs] .= net.lb[idxs] .- margin
-    net.ub[idxs] .= net.ub[idxs] .+ margin
-
-    # cache = Dict{Tuple{Float64,Float64}, Vector{Float64}}()
-    cache = Dict{Float64, Dict{Float64, Vector{Float64}}}()
+function vatpvg_ranges(M::SimModel; 
+        vatp_margin::Float64 = 0.0,
+        vg_margin::Float64 = 0.0,
+    )
     # ranges
-    vatpL, vatpU = net.lb[vatp_idx], net.ub[vatp_idx]
-    vatp_range = vrange(vatpL, vatpU, θvatp)
+    vatpL, vatpU = fva(M.net, M.vatp_idx)
+    vatp_range = vrange(vatpL - vatp_margin, vatpU + vg_margin, M.θvatp)
     vg_ranges = Vector{typeof(vatp_range)}(undef, length(vatp_range))
     for (i, vatp) in enumerate(vatp_range)
-        vgL, vgU = fixxing(net, vatp_idx, vatp) do 
-            try; return fva(net, vg_idx)
-                catch; return 0.0, 0.0
-            end
+        vgL, vgU = fixxing(M.net, M.vatp_idx, vatp) do 
+            fva(M.net, M.vg_idx)
         end
-        margin = cache_marginf * abs(vgL - vgU)
-        vg_range = vrange(vgL - margin, vgU + margin, θvg)
-        vg_ranges[i] = vg_range
+        @inbounds vg_ranges[i] = vrange(vgL - vg_margin, vgU + vg_margin, M.θvg)
     end
+    return vatp_range, vg_ranges
+end
+
+## ---------------------------------------------------------  
+cache_file(M::SimModel) = joinpath(CACHE_DIR, 
+    mysavename("cache_", "jld"; M.θvatp, M.θvg))
+
+function get_cache(M::SimModel)
+    cfile = cache_file(M)
+    if isfile(cfile)
+        cache = deserialize(cfile)
+    else
+        cache = vgvatp_cache(M)
+        serialize(cfile, cache)
+    end
+    return cache
+end
+    
+
+## ---------------------------------------------------------  
+function vgvatp_cache(M::SimModel)
+
+    # Open network
+    M = deepcopy(M)
+    net = M.net
+    
+    # ranges
+    vatp_range, vg_ranges = vatpvg_ranges(M::SimModel; 
+        vatp_margin = 10.0^(-M.θvatp),
+        vg_margin = 10.0^(-M.θvg)
+    )
     N = sum(length.(values(vg_ranges)))
 
     # Caching
-    prog = Progress(N; desc = "Caching $N flxs ... ", dt = 0.5)
+    cache = Dict{Float64, Dict{Float64, Vector{Float64}}}()
+    prog = Progress(N; desc = "Caching (N = $N)  ... ", dt = 0.5)
+    c = 0
     for (i, vatp) in enumerate(vatp_range)
         lnet = deepcopy(net)
         cache[vatp] = Dict{Float64, Vector{Float64}}()
-        for vg in vg_ranges[i]
-            fixxing(lnet, vatp_idx, vatp) do 
-                fixxing(lnet, vg_idx, vg) do 
-                    sol = fba(lnet, obj_idx)
-                    cache[vatp][vg] = isempty(sol) ? zeros(length(lnet.c)) : sol            
+        @inbounds vg_range = vg_ranges[i]
+        for vg in vg_range
+            fixxing(lnet, M.vatp_idx, vatp) do 
+                fixxing(lnet, M.vg_idx, vg) do 
+                    sol = fba(lnet, M.obj_idx)
+                    cache[vatp][vg] = sol            
                 end
             end
-
+            c += 1
         end
-        next!(prog; showvalues = [
-                    (:margin, margin),
-                    (:vg_range, string(vg_ranges[i], " len: ", length(vg_ranges[i]))),
+        update!(prog, c; showvalues = [
                     (:vatp_range, string(vatp_range, " len: ", length(vatp_range))),
+                    (:vg_range, string(vg_range, " len: ", length(vg_range))),
                 ]
             )   
     end
@@ -118,66 +158,44 @@ function vgvatp_cache(net, θvg, θvatp,
     return cache
 end
 
-## ---------------------------------------------------------
+# ---------------------------------------------------------
 # Sim function
-function run_simulation(P::SimParams; at_iter = (it, P) -> P)
+function run_simulation!(M::SimModel; 
+        at_iter = (it, P, O) -> P,
+        cache = get_cache(M),
+        verbose = true
+    )
 
     ## ---------------------------------------------------------
-    # model
-    net = ToyModel()
-    vatp_idx = rxnindex(net, "vatp")
-    vg_idx = rxnindex(net, "gt")
-    vl_idx = rxnindex(net, "lt")
-    obj_idx = rxnindex(net, "biom")
-    net.ub[vg_idx] = max(net.lb[vg_idx], (P.Vg * P.sg0) / (P.Kg + P.sg0))
-    net.ub[vl_idx] = max(net.lb[vl_idx], (P.Vl * P.sl0) / (P.Kl + P.sl0))
+    # prepare model
+    net = M.net
+    vatp_idx, vg_idx, vl_idx, obj_idx = M.vatp_idx, M.vg_idx, M.vl_idx, M.obj_idx
+    net.ub[vg_idx] = max(net.lb[vg_idx], (M.Vg * M.sg0) / (M.Kg + M.sg0))
+    net.ub[vl_idx] = max(net.lb[vl_idx], (M.Vl * M.sl0) / (M.Kl + M.sl0))
 
-    ## ---------------------------------------------------------
-    # Polytope cache
-    cfile = cache_file("cache", hash(net), P.θvatp, P.θvg, P.cache_marginf)
-    if !isfile(cfile)
-        cache = vgvatp_cache(net, P.θvg, P.θvatp, 
-            vg_idx, vatp_idx, # dimentions
-            obj_idx;
-            P.cache_marginf
-        )
-        serialize(cfile, cache)
-    else
-        cache = deserialize(cfile)
+    # cache
+    if isnothing(cache)
+        cache = vgvatp_cache(M)
     end
 
-    sg = P.sg0
-    sl = P.sl0
     # Out
-    sl_ts = []
-    sg_ts = []
-    X_ts = []
-    Xb = Dict{Float64, Dict{Float64, Float64}}()
-
-    prog = Progress(P.niters; desc = "Simulating ... ")
-    for it in 1:P.niters
-
-        P = at_iter(it, P)::SimParams
+    sl_ts, sg_ts, X_ts, Xb = M.sl_ts, M.sg_ts, M.X_ts, M.Xb
+    sg, sl = M.sg0, M.sl0
+    
+    verbose && (prog = Progress(M.niters; desc = "Simulating ... "))
+    for it in 1:M.niters
 
         ## ---------------------------------------------------------
         # ranges
-        vatpL, vatpU = fva(net, vatp_idx)
-        vatp_range = vrange(vatpL, vatpU, P.θvatp)
-        vg_ranges = Dict()
-        for vatp in vatp_range
-            vgL, vgU = fixxing(net, vatp_idx, vatp) do 
-                fva(net, vg_idx)
-            end
-            vg_ranges[vatp] = vrange(vgL, vgU, P.θvg)
-        end
+        vatp_range, vg_ranges = vatpvg_ranges(M::SimModel)
 
         ## ---------------------------------------------------------
         # X
         if isempty(Xb) 
-            for vatp in vatp_range
+            for (i, vatp) in enumerate(vatp_range)
                 Xb[vatp] = Dict{Float64, Float64}() 
-                for vg in vg_ranges[vatp]
-                    Xb[vatp][vg] = P.X0
+                for vg in @inbounds vg_ranges[i]
+                    Xb[vatp][vg] = M.X0
                 end
             end
         end
@@ -186,12 +204,12 @@ function run_simulation(P::SimParams; at_iter = (it, P) -> P)
         Σvg__X = Dict{Float64, Float64}()
         vgN = Dict{Float64, Int}()
 
-        for vatp in vatp_range
+        for (i, vatp) in enumerate(vatp_range)
             Σvg__X[vatp] = 0.0
-            vg_range = vg_ranges[vatp]
+            @inbounds vg_range = vg_ranges[i]
             lXb = get!(Xb, vatp, Dict())
             for vg in vg_range
-                lX = get!(lXb, vg, P.Xmin)
+                lX = get!(lXb, vg, M.Xmin)
                 Σvg__X[vatp] += lX
             end
 
@@ -202,27 +220,27 @@ function run_simulation(P::SimParams; at_iter = (it, P) -> P)
 
         Σ_vatp_vg__z_X = sum(z[vatp]* Σvg__X[vatp] for vatp in vatp_range)
         vatpvgN = sum(values(vgN))
-        term2 = P.ϵ * (Σ_vatp_vg__z_X) / vatpvgN
+        term2 = M.ϵ * (Σ_vatp_vg__z_X) / vatpvgN
 
-        for vatp in vatp_range
-            term1 = (1 - P.ϵ) * (z[vatp]* Σvg__X[vatp]) / vgN[vatp]
+        for (i, vatp) in enumerate(vatp_range)
+            term1 = (1 - M.ϵ) * (z[vatp]* Σvg__X[vatp]) / vgN[vatp]
             lXb = Xb[vatp]
-            for vg in vg_ranges[vatp]
+            for vg in @inbounds vg_ranges[i]
                 lX = lXb[vg]
-                term3 = lX * P.D
+                term3 = lX * M.D
                 # update X
-                lX = (P.damp * lX) + (1 - P.damp) * (lX + term1 + term2 - term3) 
-                lXb[vg] = max(P.Xmin, lX)
+                lX = (M.damp * lX) + (1 - M.damp) * (lX + term1 + term2 - term3) 
+                lXb[vg] = max(M.Xmin, lX)
             end
         end
         
         ## ---------------------------------------------------------
-        # Update Xb
-        temp_Xb = Xb
-        Xb = Dict{Float64, Dict{Float64, Float64}}()
-        for vatp in vatp_range
+        # Update Xb (let unfeasible out)
+        temp_Xb = deepcopy(Xb)
+        empty!(Xb)
+        for (i, vatp) in enumerate(vatp_range)
             lXb = Xb[vatp] = Dict{Float64, Float64}() 
-            for vg in vg_ranges[vatp]
+            for vg in @inbounds vg_ranges[i]
                 lXb[vg] = temp_Xb[vatp][vg]
             end
         end
@@ -232,10 +250,10 @@ function run_simulation(P::SimParams; at_iter = (it, P) -> P)
         # concs
         Σ_vatp_vg__vg_X = 0.0
         Σ_vatp_vg__vl_X = 0.0
-        for vatp in vatp_range
+        for (i, vatp) in enumerate(vatp_range)
             lcache = cache[vatp]
             lXb = Xb[vatp]
-            for vg in vg_ranges[vatp]
+            for vg in @inbounds vg_ranges[i]
                 vl = lcache[vg][vl_idx]
                 lX = lXb[vg]
                 Σ_vatp_vg__vg_X += vg * lX
@@ -243,11 +261,11 @@ function run_simulation(P::SimParams; at_iter = (it, P) -> P)
             end
         end
         # update sg
-        dsg = -Σ_vatp_vg__vg_X + P.D * (P.cg - sg)
-        sg = max(0.0, P.damp * sg + (1 - P.damp) * (sg + dsg))
+        dsg = -Σ_vatp_vg__vg_X + M.D * (M.cg - sg)
+        sg = max(0.0, M.damp * sg + (1 - M.damp) * (sg + dsg))
         # update sl
-        dsl = -Σ_vatp_vg__vl_X + P.D * (P.cl - sl)
-        sl = max(0.0, P.damp * sl + (1 - P.damp) * (sl + dsl))
+        dsl = -Σ_vatp_vg__vl_X + M.D * (M.cl - sl)
+        sl = max(0.0, M.damp * sl + (1 - M.damp) * (sl + dsl))
         
 
         ## ---------------------------------------------------------
@@ -258,14 +276,16 @@ function run_simulation(P::SimParams; at_iter = (it, P) -> P)
 
         ## ---------------------------------------------------------
         # Update polytope
-        net.ub[vg_idx] = max(net.lb[vg_idx], (P.Vg * sg) / (P.Kg + sg))
+        net.ub[vg_idx] = max(net.lb[vg_idx], (M.Vg * sg) / (M.Kg + sg))
 
         ## ---------------------------------------------------------
         # Verbose
-        update!(prog, it; showvalues = [
+        verbose && update!(prog, it; showvalues = [
                 (:it, it),
+                (:D, M.D),
+                (:damp, M.damp),
+                (": ------ ", "------------------"),
                 (:X, X),
-                (:D, P.D),
                 (:sg, sg),
                 (:dsg, dsg),
                 (:sl, sl),
@@ -273,12 +293,11 @@ function run_simulation(P::SimParams; at_iter = (it, P) -> P)
                 (:vg_ub, net.ub[vg_idx]),
                 (:vatpvgN, vatpvgN),
                 (:Xb_len, sum(length.(values(Xb)))),
-                (:damp, P.damp)
             ]
         )
 
     end # for it in 1:niters
-    finish!(prog)
+    verbose && finish!(prog)
 
-    X_ts, sg_ts, sl_ts, Xb
+    return M
 end
