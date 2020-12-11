@@ -29,6 +29,9 @@ let
 
     writing_lock = ReentrantLock()
 
+    # cache
+    get_cache(SimModel(;θvatp = 2, θvg = 3))
+
     @threads for D in Ds
 
         # simModel
