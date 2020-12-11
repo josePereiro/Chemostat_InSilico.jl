@@ -10,8 +10,8 @@ include("Utilities/Utilities.jl")
 # include("MaxEnt/MaxEnt.jl")
 include("LP_Implement/LP_Implement.jl")
 
-# function __init__()
-#     _create_dirs()
-# end
+function __init__()
+    _create_dirs()
+end
 
 end
