@@ -1,4 +1,4 @@
-struct SimModel
+mutable struct SimModel
     # net
     net::MetNet              # auxiliar metabolic network
     vatp_idx::Int
@@ -8,73 +8,66 @@ struct SimModel
 
     # Sim params
     θvatp::Int               # exactness of vatp discretization dvatp = 10.0^-(θvatp)
-    θvg::Int                 # exactness of vatp discretization dvatp = 10.0^-(θvatp)
-    X0::Float64              # initial cell density value of each quanta of the polytope
+    θvg::Int                 # exactness of vg discretization dvatp = 10.0^-(θvg)
     Xmin::Float64            # minimal allowed cell density value of each quanta of the polytope
     D::Float64               # Chemostat dilution rate
     
     cg::Float64              # feed G concentration
-    sg0::Float64             # initial medium G concenration
     Kg::Float64              # g MM constant
     Vg::Float64              # upper g max bound
 
     cl::Float64              # feed G concentration
-    sl0::Float64             # initial medium G concenration
     Kl::Float64              # g MM constant
     Vl::Float64 # 0.1        # upper g max bound
 
     ϵ::Float64               # mutation rate (%)
-
     niters::Int              # simulation iteration number
     damp::Float64            # numeric damp
 
     # Chemostat state
-    sl_ts::Vector{Float64}
     sg_ts::Vector{Float64}
+    sl_ts::Vector{Float64}
     X_ts::Vector{Float64}
     Xb::Dict{Float64, Dict{Float64, Float64}}
 
-    function SimModel(;net = ToyModel(), θvatp = 2, θvg = 3, 
-            X0 = 1e-5, Xmin = 1e-20, D = 1e-2, 
+    function SimModel(;net = ToyModel(), θvatp = 2, θvg = 3, X0 = 0.22, Xmin = 1e-20, D = 1e-2, 
             cg = 15.0, sg0 = 15.0, Kg = 0.5, Vg = 0.5, 
             cl = 0.0, sl0 = 0.0, Kl = 0.5, Vl = 0.0, 
             ϵ = 0.0, 
             niters = 200, damp = 0.9,
             sg = Ref{Float64}(sg0), sl = Ref{Float64}(sl0),
-            sl_ts = [], sg_ts = [], X_ts = [],
-            Xb = Dict{Float64, Dict{Float64, Float64}}(),
             vatp_ider = "vatp",
             vg_ider = "gt",
             vl_ider = "lt",
             obj_ider = "biom"
-        ) 
+        )
 
         vatp_idx = rxnindex(net, vatp_ider)
         vg_idx = rxnindex(net, vg_ider)
         vl_idx = rxnindex(net, vl_ider)
         obj_idx = rxnindex(net, obj_ider)
 
+        sg_ts = [sg0]; sl_ts = [sl0]
+        Xb = Dict{Float64, Dict{Float64, Float64}}()
+        vatp_range, vg_ranges = vatpvg_ranges(net, θvatp, vatp_idx, θvg, vg_idx)
+        N = sum(length.(values(vg_ranges)))
+        for (i, vatp) in enumerate(vatp_range)
+            Xb[vatp] = Dict{Float64, Float64}()
+            for vg in vg_ranges[i]
+                Xb[vatp][vg] = X0/N
+            end
+        end
+        X_ts = [X0]
+        
         new(net, vatp_idx, vg_idx, vl_idx, obj_idx,
-            θvatp, θvg, X0, Xmin, D, 
-            cg, sg0, Kg, Vg, 
-            cl, sl0, Kl, Vl, 
+            θvatp, θvg, Xmin, D, 
+            cg, Kg, Vg, 
+            cl, Kl, Vl, 
             ϵ, niters, damp,  
-            sl_ts, sg_ts, X_ts, Xb
+            sg_ts, sl_ts, X_ts, Xb
         )
     end
 end
-
-# function SimModel(M::SimModel; kwargs...)
-#     d = Dict{Symbol, Any}()
-#     for k in fieldnames(SimModel)
-#         d[k] = getfield(M, k)
-#     end
-#     for (k, v) in kwargs
-#         d[k] = v
-#     end
-#     # return SimModel(;d...)
-#     d
-# end 
 
 ## ---------------------------------------------------------  
 function vrange(L, U, d::Int)
@@ -84,22 +77,24 @@ function vrange(L, U, d::Int)
     return x0:dx:x1
 end
 
-function vatpvg_ranges(M::SimModel; 
+function vatpvg_ranges(net, θvatp, vatp_idx, θvg, vg_idx; 
         vatp_margin::Float64 = 0.0,
         vg_margin::Float64 = 0.0,
     )
     # ranges
-    vatpL, vatpU = fva(M.net, M.vatp_idx)
-    vatp_range = vrange(vatpL - vatp_margin, vatpU + vg_margin, M.θvatp)
+    vatpL, vatpU = fva(net, vatp_idx)
+    vatp_range = vrange(vatpL - vatp_margin, vatpU + vg_margin, θvatp)
     vg_ranges = Vector{typeof(vatp_range)}(undef, length(vatp_range))
     for (i, vatp) in enumerate(vatp_range)
-        vgL, vgU = fixxing(M.net, M.vatp_idx, vatp) do 
-            fva(M.net, M.vg_idx)
+        vgL, vgU = fixxing(net, vatp_idx, vatp) do 
+            fva(net, vg_idx)
         end
-        @inbounds vg_ranges[i] = vrange(vgL - vg_margin, vgU + vg_margin, M.θvg)
+        @inbounds vg_ranges[i] = vrange(vgL - vg_margin, vgU + vg_margin, θvg)
     end
     return vatp_range, vg_ranges
 end
+vatpvg_ranges(M::SimModel; kwargs...) = 
+    vatpvg_ranges(M.net, M.θvatp, M.vatp_idx, M.θvg, M.vg_idx; kwargs...)
 
 ## ---------------------------------------------------------  
 cache_file(M::SimModel) = joinpath(CACHE_DIR, 
@@ -118,6 +113,7 @@ end
     
 
 ## ---------------------------------------------------------  
+# TODO: Runge-Kutta damping
 function vgvatp_cache(M::SimModel)
 
     # Open network
@@ -161,17 +157,10 @@ end
 # ---------------------------------------------------------
 # Sim function
 function run_simulation!(M::SimModel; 
-        at_iter = (it, P, O) -> P,
+        at_iter = (it, M) -> nothing,
         cache = get_cache(M),
         verbose = true
     )
-
-    ## ---------------------------------------------------------
-    # prepare model
-    net = M.net
-    vatp_idx, vg_idx, vl_idx, obj_idx = M.vatp_idx, M.vg_idx, M.vl_idx, M.obj_idx
-    net.ub[vg_idx] = max(net.lb[vg_idx], (M.Vg * M.sg0) / (M.Kg + M.sg0))
-    net.ub[vl_idx] = max(net.lb[vl_idx], (M.Vl * M.sl0) / (M.Kl + M.sl0))
 
     # cache
     if isnothing(cache)
@@ -180,25 +169,23 @@ function run_simulation!(M::SimModel;
 
     # Out
     sl_ts, sg_ts, X_ts, Xb = M.sl_ts, M.sg_ts, M.X_ts, M.Xb
-    sg, sl = M.sg0, M.sl0
+    sg, sl = last(sg_ts), last(sl_ts)
     
+    ## ---------------------------------------------------------
+    # prepare model
+    net = M.net
+    vatp_idx, vg_idx, vl_idx, obj_idx = M.vatp_idx, M.vg_idx, M.vl_idx, M.obj_idx
+    net.ub[vg_idx] = max(net.lb[vg_idx], (M.Vg * sg) / (M.Kg + sg))
+    net.ub[vl_idx] = max(net.lb[vl_idx], (M.Vl * sl) / (M.Kl + sl))
+
     verbose && (prog = Progress(M.niters; desc = "Simulating ... "))
     for it in 1:M.niters
+
+        at_iter(it, M)
 
         ## ---------------------------------------------------------
         # ranges
         vatp_range, vg_ranges = vatpvg_ranges(M::SimModel)
-
-        ## ---------------------------------------------------------
-        # X
-        if isempty(Xb) 
-            for (i, vatp) in enumerate(vatp_range)
-                Xb[vatp] = Dict{Float64, Float64}() 
-                for vg in @inbounds vg_ranges[i]
-                    Xb[vatp][vg] = M.X0
-                end
-            end
-        end
 
         z = Dict{Float64, Float64}()
         Σvg__X = Dict{Float64, Float64}()

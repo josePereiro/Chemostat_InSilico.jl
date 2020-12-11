@@ -1,3 +1,6 @@
+import DrWatson: quickactivate
+quickactivate(@__DIR__, "Chemostat_InSilico")
+
 using Chemostat_Dynamics
 using Chemostat_Dynamics.LP_Implement
 using Chemostat_Dynamics.Utilities
@@ -5,7 +8,6 @@ using ProgressMeter
 using Plots
 using Serialization
 using Base.Threads
-using DrWatson
 
 ## ---------------------------------------------------------
 function plot_res(M::SimModel; f = (x) -> x)
@@ -19,26 +21,56 @@ function plot_res(M::SimModel; f = (x) -> x)
     p = plot([p1, p2]...)
 end
 
-
 ## ---------------------------------------------------------
 # Find X0
 let
 
-    # simModel
-    M = SimModel(
-        θvatp = 2, 
-        θvg = 3, 
-        niters = 2000,
-        X0 = 1e-5,
-        D = 0.001
-    )
+    Ds = collect(10.0.^(-3:0.1:-1))
 
+    writing_lock = ReentrantLock()
 
-    run_simulation!(M; verbose = true)
+    @threads for D in Ds
 
-    p = plot_res(M)
-    savefig(p, joinpath(CH3_FIGURES_DIR, "test_.png"))
+        # simModel
+        M = SimModel(;
+            θvatp = 2, 
+            θvg = 3, 
+            niters = 1000000,
+            sg0 = 4.5,
+            X0 = 0.3,
+            D,
+            damp = 0.98
+        )
+
+        save_frec = M.niters ÷ 100
+
+        lock(writing_lock) do
+            @info "Doing" threadid() D
+            println()
+        end
+
+        # TODO: make a real chemostat. move D to get a given X
+        function at_iter(it, M)
+            (it == 1 || it % save_frec != 0 || it == M.niters) && return
+
+            lock(writing_lock) do
+                @info "Report" threadid() it
+                println()
+            end    
+        end
+        run_simulation!(M; verbose = false)
+
+        datname = mysavename("Ch3_", "jld"; M.D, M.damp)
+        serialize(joinpath(CH3_DATA_DIR, datname), M)
+
+        lock(writing_lock) do
+            @info "Finised" threadid() D
+            println()
+        end    
+    end
+
 end
+
 ##
     # # gradient descent
     # x0 = [1e-2]
@@ -64,19 +96,19 @@ end
 # end
 
 ## ---------------------------------------------------------
-target = [MC_vatp_mean]
-                verbose && @info "Running Gradient descent " mutr ciodiff mstgth MC_vatp_mean
-                x0 = [0.0]
-                x1 = [10.0] 
-                C = [500.0]
-                MaxEnt_vatp_mean = nothing
-                beta = grad_desc(;target, x0, x1, C, th = gdth, verbose) do x
-                    beta = first(x)
-                    rvatp, probs = vatp_marginal_pdf(pol, beta; n = Int(1e5))   
-                    Δvatp = step(rvatp)  
-                    MaxEnt_vatp_mean = sum(probs .* rvatp .* Δvatp)       
-                    return MaxEnt_vatp_mean
-                end |> first
+# target = [MC_vatp_mean]
+#                 verbose && @info "Running Gradient descent " mutr ciodiff mstgth MC_vatp_mean
+#                 x0 = [0.0]
+#                 x1 = [10.0] 
+#                 C = [500.0]
+#                 MaxEnt_vatp_mean = nothing
+#                 beta = grad_desc(;target, x0, x1, C, th = gdth, verbose) do x
+#                     beta = first(x)
+#                     rvatp, probs = vatp_marginal_pdf(pol, beta; n = Int(1e5))   
+#                     Δvatp = step(rvatp)  
+#                     MaxEnt_vatp_mean = sum(probs .* rvatp .* Δvatp)       
+#                     return MaxEnt_vatp_mean
+#                 end |> first
 ## ---------------------------------------------------------
 # # ToyModel Simulations
 # let

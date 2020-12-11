@@ -1,5 +1,5 @@
 using DrWatson
-quickactivate(@__DIR__, "Chemostat_Kayser2005")
+quickactivate(@__DIR__, "Chemostat_InSilico")
 
 using Chemostat_Dynamics
 using Chemostat_Dynamics.Polytopes
