@@ -9,58 +9,63 @@ function run_simulation!(M::SimModel;
     cache = vgvatp_cache(M; marginf = cache_marginf)
 
     ## ---------------------------------------------------------
-    # extract/prepare model
+    # extract model
     sl_ts, sg_ts, X_ts, Xb = M.sl_ts, M.sg_ts, M.X_ts, M.Xb
     sg, sl = last(sg_ts), last(sl_ts)
-    
     net = M.net
     vatp_idx, vg_idx, vl_idx, obj_idx = M.vatp_idx, M.vg_idx, M.vl_idx, M.obj_idx
     Vg, Kg, Vl, Kl = M.Vg, M.Kg, M.Vl, M.Kl
+    damp, Xmin = M.damp, M.Xmin
+    
+    ## ---------------------------------------------------------
+    # prepare model
     net.ub[vg_idx] = max(net.lb[vg_idx], (Vg * sg) / (Kg + sg))
     net.ub[vl_idx] = max(net.lb[vl_idx], (Vl * sl) / (Kl + sl))
-    damp, Xmin = M.damp, M.Xmin
 
     verbose && (prog = Progress(M.niters; desc = "Simulating ... "))
     for it in 1:M.niters
 
-        at_iter(it, M)
+        ## ---------------------------------------------------------
+        at_iter(it, M) # feed back
 
         ## ---------------------------------------------------------
         # ranges
         vatp_range, vg_ranges = vatpvg_ranges(M::SimModel)
+        vatpvgN = sum(length.(values(vg_ranges))) # total regions
 
+        # vatp dependent
         z = Dict{Float64, Float64}()
         Σvg__X = Dict{Float64, Float64}()
-        vgN = Dict{Float64, Int}()
 
         for (i, vatp) in enumerate(vatp_range)
-            Σvg__X[vatp] = 0.0
             @inbounds vg_range = vg_ranges[i]
-            lXb = get!(Xb, vatp, Dict())
-            for vg in vg_range
-                lX = get!(lXb, vg, Xmin)
-                Σvg__X[vatp] += lX
-            end
+
+            lXb = get!(Xb, vatp, Dict{Float64, Float64}())
+            
+            Σvg__X[vatp] = sum(get!(lXb, vg, Xmin) for vg in vg_range)
 
             vg0 = first(vg_range)
             z[vatp] = cache[vatp][vg0][obj_idx]
-            vgN[vatp] = length(vg_range)
+            # vgN[vatp] = length(vg_range)
         end
 
-        Σ_vatp_vg__z_X = sum(z[vatp]* Σvg__X[vatp] for vatp in vatp_range)
-        vatpvgN = sum(values(vgN))
+        Σ_vatp_vg__z_X = sum(z[vatp] * Σvg__X[vatp] for vatp in vatp_range)
         term2 = M.ϵ * (Σ_vatp_vg__z_X) / vatpvgN
 
         for (i, vatp) in enumerate(vatp_range)
-            term1 = (1 - M.ϵ) * (z[vatp]* Σvg__X[vatp]) / vgN[vatp]
+            @inbounds vg_range = vg_ranges[i]
+
+            vgN = length(vg_range)
+            term1 = (1 - M.ϵ) * (z[vatp]* Σvg__X[vatp]) / vgN
+            
             lXb = Xb[vatp]
-            for vg in @inbounds vg_ranges[i]
-                lX = lXb[vg]
-                term3 = lX * M.D
+            for vg in vg_range
+                Xᵢ₋₁ = lXb[vg]
+                term3 = Xᵢ₋₁ * M.D
                 # update X
-                ΔlX = lX + term1 + term2 - term3
-                lX = (damp * lX) + (1 - damp) * ΔlX
-                lXb[vg] = max(Xmin, lX)
+                ΔX = term1 + term2 - term3
+                Xᵢ = (damp * Xᵢ₋₁) + (1 - damp) * (Xᵢ₋₁ - ΔX)
+                lXb[vg] = max(Xmin, Xᵢ)
             end
         end
         
@@ -117,9 +122,9 @@ function run_simulation!(M::SimModel;
                 (": ------ ", "------------------"),
                 (:X, X),
                 (:sg, sg),
-                (:dsg, dsg),
+                (:Δsg, Δsg),
                 (:sl, sl),
-                (:dsl, dsl),
+                (:Δsl, Δsl),
                 (:vg_ub, net.ub[vg_idx]),
                 (:vatpvgN, vatpvgN),
                 (:Xb_len, sum(length.(values(Xb)))),

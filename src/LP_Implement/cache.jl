@@ -5,7 +5,7 @@ cache_file(M::SimModel, marginf) = joinpath(CACHE_DIR,
 
 ## ---------------------------------------------------------  
 # TODO: Runge-Kutta damping
-function vgvatp_cache(M::SimModel; marginf::Real = 1)
+function vgvatp_cache(M::SimModel; marginf::Real = 1)::Dict{Float64, Dict{Float64, Vector{Float64}}}
 
     vatp_margin = abs(marginf * (10.0^(-M.θvatp)))
     vg_margin = abs(marginf * (10.0^(-M.θvg)))
@@ -46,5 +46,8 @@ function vgvatp_cache(M::SimModel; marginf::Real = 1)
             )   
     end
     finish!(prog)
+    
+    serialize(cfile, cache)
+    
     return cache
 end

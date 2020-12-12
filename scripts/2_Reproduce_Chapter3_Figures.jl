@@ -10,6 +10,58 @@ using Serialization
 using Base.Threads
 
 ## ---------------------------------------------------------
+using BenchmarkTools
+let
+    N = 5000
+    intr = Int.(1:N)
+    strr = string.(1:N)
+    d1 = Dict{Tuple{Int64,String}, String}((i, s) => "bla" for i in intr, s in strr)
+    d2 = Dict{Int64, Dict{String, String}}(i => Dict{String, String}(s => "bla" for s in strr) for i in intr)
+    @assert length(d1) == sum(length.(values(d2)))
+
+    @info "Accessing d1"
+    @btime begin 
+        for i in $intr, s in $strr
+            $d1[(i, s)] = "blo"
+        end
+    end
+
+    @info "Accessing d2 no-caching"
+    @btime begin 
+        for i in $intr, s in $strr
+            $d2[i][s] = "blo"
+        end
+    end
+
+    @info "Accessing d2 caching"
+    @btime begin 
+        for i in $intr
+            ld = $d2[i]
+            for s in $strr
+                ld[s] = "blo"
+            end
+        end
+    end
+    @assert length(d1) == sum(length.(values(d2)))
+end
+
+##
+    # @btime begin 
+    #     for _ in 1:100
+    #         for i in 1:N
+    #             ld::Dict{Int, String} = $d2[i] 
+    #             for s in 1:N
+    #                 ld[Int(s)] = "blo"
+    #             end
+    #         end
+    #     end
+    # end
+
+    
+
+# end
+
+## ---------------------------------------------------------
 # Find X0
 let
 
@@ -27,39 +79,39 @@ let
     # cache
     vgvatp_cache(M0)
         
-    Ds = collect(10.0.^(-3:0.1:-1))
-    @threads for D in Ds
+    # Ds = collect(10.0.^(-3:0.1:-1))
+    # @threads for D in Ds
 
-        # simModel
-        M = deepcopy(M0)
-        M.D = D
+    #     # simModel
+    #     M = deepcopy(M0)
+    #     M.D = D
 
-        save_frec = M.niters ÷ 100
+    #     save_frec = M.niters ÷ 100
 
-        lock(writing_lock) do
-            @info "Doing" threadid() D
-            println()
-        end
+    #     lock(writing_lock) do
+    #         @info "Doing" threadid() D
+    #         println()
+    #     end
 
-        # TODO: make a real chemostat. move D to get a given X
-        function at_iter(it, M)
-            (it == 1 || it % save_frec != 0 || it == M.niters) && return
+    #     # TODO: make a real chemostat. move D to get a given X
+    #     function at_iter(it, M)
+    #         (it == 1 || it % save_frec != 0 || it == M.niters) && return
 
-            lock(writing_lock) do
-                @info "Report" threadid() it
-                println()
-            end    
-        end
-        run_simulation!(M; verbose = false)
+    #         lock(writing_lock) do
+    #             @info "Report" threadid() it
+    #             println()
+    #         end    
+    #     end
+    #     run_simulation!(M; verbose = false)
 
-        datname = mysavename("Ch3_", "jld"; M.D, M.damp)
-        serialize(joinpath(CH3_DATA_DIR, datname), M)
+    #     datname = mysavename("Ch3_", "jld"; M.D, M.damp)
+    #     serialize(joinpath(CH3_DATA_DIR, datname), M)
 
-        lock(writing_lock) do
-            @info "Finised" threadid() D
-            println()
-        end    
-    end
+    #     lock(writing_lock) do
+    #         @info "Finised" threadid() D
+    #         println()
+    #     end    
+    # end
 
 end
 
