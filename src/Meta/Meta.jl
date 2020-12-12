@@ -1,4 +1,4 @@
-const PROJECT_NAME = "Chemostat_Dynamics"
+const PROJECT_NAME = "Chemostat_InSilico"
 const PROJECT_DIR = abspath(joinpath(@__DIR__, "../.."))
 const FIGURES_DIR = joinpath(PROJECT_DIR, "figures")
 const DATA_DIR = joinpath(PROJECT_DIR, "data")

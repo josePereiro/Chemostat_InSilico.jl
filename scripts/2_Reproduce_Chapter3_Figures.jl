@@ -1,49 +1,38 @@
 import DrWatson: quickactivate
 quickactivate(@__DIR__, "Chemostat_InSilico")
 
-using Chemostat_Dynamics
-using Chemostat_Dynamics.LP_Implement
-using Chemostat_Dynamics.Utilities
+using Chemostat_InSilico
+using Chemostat_InSilico.LP_Implement
+using Chemostat_InSilico.Utilities
 using ProgressMeter
 using Plots
 using Serialization
 using Base.Threads
 
 ## ---------------------------------------------------------
-function plot_res(M::SimModel; f = (x) -> x)
-    p1 = plot(xlabel = "time", ylabel = "conc")
-    plot!(p1, f.(M.sg_ts); label = "sg", lw = 3)
-    plot!(p1, f.(M.sl_ts); label = "sl", lw = 3)
-    
-    p2 = plot(xlabel = "time", ylabel = "X")
-    plot!(p2, f.(M.X_ts); label = "X", lw = 3)
-    
-    p = plot([p1, p2]...)
-end
-
-## ---------------------------------------------------------
 # Find X0
 let
 
-    Ds = collect(10.0.^(-3:0.1:-1))
-
-    writing_lock = ReentrantLock()
-
-    # cache
-    get_cache(SimModel(;θvatp = 2, θvg = 3))
-
-    @threads for D in Ds
-
-        # simModel
-        M = SimModel(;
+    M0 = SimModel(;
             θvatp = 2, 
             θvg = 3, 
             niters = 1000000,
             sg0 = 4.5,
             X0 = 0.3,
-            D,
             damp = 0.98
         )
+        
+    writing_lock = ReentrantLock()
+        
+    # cache
+    vgvatp_cache(M0)
+        
+    Ds = collect(10.0.^(-3:0.1:-1))
+    @threads for D in Ds
+
+        # simModel
+        M = deepcopy(M0)
+        M.D = D
 
         save_frec = M.niters ÷ 100
 

@@ -1,4 +1,4 @@
-name = "Chemostat_Dynamics"
+name = "Chemostat_InSilico"
 uuid = "d43f3d26-279f-4b31-985f-d16d95e3278a"
 authors = ["josePereiro <jose.pereiro.lab@gmail.com> and contributors"]
 version = "0.1.0"
