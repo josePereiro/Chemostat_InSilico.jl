@@ -11,38 +11,8 @@ using Serialization
 using Base.Threads
 using Dates
 using Base.Threads
+using BenchmarkTools
 
-# ---------------------------------------------------------
-# let
-#     N = 100
-#     chuncks = InU.get_chuncks(1:N, 4, th = -1)
-#     for _ in 1:1000
-#         d = Dict()
-#         for chunck in chuncks, i in chunck
-#             d[i] = rand()
-#         end
-#         @threads for chunck in chuncks
-#             for i in chunck
-#                 d[i] = rand()
-#             end
-#         end
-#         length(d) |> println
-#     end
-# end
-# ---------------------------------------------------------
-let
-    M0 = InLP.SimModel(;
-        θvatp = 2, 
-        θvg = 3, 
-        niters = Int(1e8),
-        sg0 = 4.5,
-        X0 = 0.3,
-        damp = 0.98,
-        D = 0.01
-    )
-    vatp_range, vg_ranges = InLP.vatpvg_ranges(M0)
-    InU.get_chuncks(vatp_range, 4, th = 1)
-end
 ## ---------------------------------------------------------
 # Find X0
 let

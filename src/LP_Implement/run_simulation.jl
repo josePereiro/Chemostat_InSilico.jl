@@ -12,15 +12,18 @@ function run_simulation!(M::SimModel;
     # extract model
     sl_ts, sg_ts, X_ts, Xb = M.sl_ts, M.sg_ts, M.X_ts, M.Xb
     sg, sl = last(sg_ts), last(sl_ts)
-    net = M.net
     vatp_idx, vg_idx, vl_idx, obj_idx = M.vatp_idx, M.vg_idx, M.vl_idx, M.obj_idx
     Vg, Kg, Vl, Kl = M.Vg, M.Kg, M.Vl, M.Kl
     damp, Xmin = M.damp, M.Xmin
     
     ## ---------------------------------------------------------
-    # prepare model
-    net.ub[vg_idx] = max(net.lb[vg_idx], (Vg * sg) / (Kg + sg))
-    net.ub[vl_idx] = max(net.lb[vl_idx], (Vl * sl) / (Kl + sl))
+    # update model
+    function update_net!(net) 
+        net.ub[vg_idx] = max(net.lb[vg_idx], (Vg * sg) / (Kg + sg))
+        net.ub[vl_idx] = max(net.lb[vl_idx], (Vl * sl) / (Kl + sl))
+    end
+    update_net!(M.net) 
+    net_pool = map((i) -> deepcopy(M.net), 1:nthreads())
 
     verbose && (prog = Progress(M.niters; desc = "Simulating ... "))
     for it in 1:M.niters
@@ -32,10 +35,9 @@ function run_simulation!(M::SimModel;
 
             ## ---------------------------------------------------------
             # ranges
-            vatp_range, vg_ranges = vatpvg_ranges(M::SimModel)
-            i_vatp_range = collect(enumerate(vatp_range))
+            i_vatp_range, vatp_range, vg_ranges = ivatpvg_ranges(M, net_pool)
             vatpvgN = sum(length.(values(vg_ranges))) # total regions
-            vatpN = length(vatp_range)
+            vatpN = length(i_vatp_range)
 
             # vatp dependent
             z = zeros(vatpN)
@@ -43,7 +45,7 @@ function run_simulation!(M::SimModel;
 
 
             for (vatpi, vatp) in i_vatp_range
-                vg_range = vg_ranges[vatp]
+                vg_range = vg_ranges[vatpi]
 
                 lXb = haskey(Xb, vatp) ? Xb[vatp] : (Xb[vatp] = Dict{Float64, Float64}())
                 
@@ -61,7 +63,7 @@ function run_simulation!(M::SimModel;
             term2 = M.ϵ * (Σ_vatp_vg__z_X) / vatpvgN
 
             @threads for (vatpi, vatp) in i_vatp_range
-                vg_range = vg_ranges[vatp]
+                vg_range = vg_ranges[vatpi]
                 
                 vgN = length(vg_range)
                 term1 = (1 - M.ϵ) * (z[vatpi]* Σvg__X[vatpi]) / vgN
@@ -85,9 +87,9 @@ function run_simulation!(M::SimModel;
             foreach((vatp) -> delete!(Xb, vatp), unfea_vatp)
             
             # vg
-            foreach(vatp_range) do vatp
+            for (vatpi, vatp) in i_vatp_range
                 lXb = Xb[vatp]
-                unfea_vg = setdiff(keys(lXb), vg_ranges[vatp])
+                unfea_vg = setdiff(keys(lXb), vg_ranges[vatpi])
                 foreach((vg) -> delete!(lXb, vg), unfea_vg)
             end
             X = sum(sum.(values.(values(Xb))))
@@ -102,7 +104,7 @@ function run_simulation!(M::SimModel;
                 tid = threadid()
                 lcache = cache[vatp]
                 lXb = Xb[vatp]
-                for vg in vg_ranges[vatp]
+                for vg in vg_ranges[vatpi]
                     vl = lcache[vg][vl_idx]
                     lX = lXb[vg]
                     # Σ_vatp_vg__vg_X += vg * lX
@@ -130,7 +132,8 @@ function run_simulation!(M::SimModel;
 
             ## ---------------------------------------------------------
             # Update polytope
-            net.ub[vg_idx] = max(net.lb[vg_idx], (Vg * sg) / (Kg + sg))
+            update_net!(M.net) 
+            foreach(update_net!, net_pool)
 
         end # t = @elapsed begin
 
@@ -147,7 +150,7 @@ function run_simulation!(M::SimModel;
                 (:Δsg, Δsg),
                 (:sl, sl),
                 (:Δsl, Δsl),
-                (:vg_ub, net.ub[vg_idx]),
+                (:vg_ub, M.net.ub[vg_idx]),
                 (:vatpvgN, vatpvgN),
                 (:Xb_len, sum(length.(values(Xb)))),
             ]

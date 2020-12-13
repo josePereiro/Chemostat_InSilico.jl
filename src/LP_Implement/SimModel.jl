@@ -51,9 +51,9 @@ mutable struct SimModel
         Xb = Dict{Float64, Dict{Float64, Float64}}()
         vatp_range, vg_ranges = vatpvg_ranges(net, θvatp, vatp_idx, θvg, vg_idx)
         N = sum(length.(values(vg_ranges)))
-        for (i, vatp) in enumerate(vatp_range)
+        for (vatpi, vatp) in enumerate(vatp_range)
             Xb[vatp] = Dict{Float64, Float64}()
-            for vg in vg_ranges[vatp]
+            for vg in vg_ranges[vatpi]
                 Xb[vatp][vg] = X0/N
             end
         end
