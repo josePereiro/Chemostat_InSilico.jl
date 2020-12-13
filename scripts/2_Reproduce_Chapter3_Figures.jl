@@ -8,77 +8,49 @@ using ProgressMeter
 using Plots
 using Serialization
 using Base.Threads
-
-## ---------------------------------------------------------
-using BenchmarkTools
-let
-    N = 5000
-    intr = Int.(1:N)
-    strr = string.(1:N)
-    d1 = Dict{Tuple{Int64,String}, String}((i, s) => "bla" for i in intr, s in strr)
-    d2 = Dict{Int64, Dict{String, String}}(i => Dict{String, String}(s => "bla" for s in strr) for i in intr)
-    @assert length(d1) == sum(length.(values(d2)))
-
-    @info "Accessing d1"
-    @btime begin 
-        for i in $intr, s in $strr
-            $d1[(i, s)] = "blo"
-        end
-    end
-
-    @info "Accessing d2 no-caching"
-    @btime begin 
-        for i in $intr, s in $strr
-            $d2[i][s] = "blo"
-        end
-    end
-
-    @info "Accessing d2 caching"
-    @btime begin 
-        for i in $intr
-            ld = $d2[i]
-            for s in $strr
-                ld[s] = "blo"
-            end
-        end
-    end
-    @assert length(d1) == sum(length.(values(d2)))
-end
-
-##
-    # @btime begin 
-    #     for _ in 1:100
-    #         for i in 1:N
-    #             ld::Dict{Int, String} = $d2[i] 
-    #             for s in 1:N
-    #                 ld[Int(s)] = "blo"
-    #             end
-    #         end
-    #     end
-    # end
-
-    
-
-# end
+using Dates
 
 ## ---------------------------------------------------------
 # Find X0
 let
 
+    sim_name = "Ch3_$(now())"
+    @info "Doing" sim_name
+
     M0 = SimModel(;
             θvatp = 2, 
             θvg = 3, 
-            niters = 1000000,
+            niters = Int(1e8),
             sg0 = 4.5,
             X0 = 0.3,
-            damp = 0.98
+            damp = 0.98,
+            D = 0.01
         )
         
     writing_lock = ReentrantLock()
         
     # cache
     vgvatp_cache(M0)
-        
+
+    # simulation
+    M = deepcopy(M0)
+
+    save_frec = M.niters ÷ 1000
+
+    # TODO: make a real chemostat. move D to get a given X
+    function at_iter(it, M)
+        (it == 1 || it % save_frec != 0 || it == M.niters) && return
+
+        fname = mysavename(sim_name, "png"; it, M.D, M.damp)
+        # serialize(joinpath(CH3_DATA_DIR, datname), M)
+        path = joinpath(CH3_FIGURES_DIR, fname)
+        p = plot_res(M)
+        savefig(p, path)
+    end
+    run_simulation!(M; at_iter, verbose = true)
+
+end
+##
     # Ds = collect(10.0.^(-3:0.1:-1))
     # @threads for D in Ds
 
@@ -113,7 +85,7 @@ let
     #     end    
     # end
 
-end
+# end
 
 ##
     # # gradient descent
@@ -203,4 +175,178 @@ end
 #     # save fig
 #     figname = joinpath(CH3_FIGURES_DIR, string(fname, ".png"))
 #     savefig(p, figname)
+# end
+
+# ## ---------------------------------------------------------
+# using BenchmarkTools
+# let
+#     N = 5000
+#     intr = Int.(1:N)
+#     strr = string.(1:N)
+#     d1 = Dict{Tuple{Int64,String}, String}((i, s) => "bla" for i in intr, s in strr)
+#     d2 = Dict{Int64, Dict{String, String}}(i => Dict{String, String}(s => "bla" for s in strr) for i in intr)
+#     @assert length(d1) == sum(length.(values(d2)))
+
+#     @info "Accessing d1"
+#     @btime begin 
+#         for i in $intr, s in $strr
+#             $d1[(i, s)] = "blo"
+#         end
+#     end
+
+#     @info "Accessing d2 no-caching"
+#     @btime begin 
+#         for i in $intr, s in $strr
+#             $d2[i][s] = "blo"
+#         end
+#     end
+
+#     @info "Accessing d2 caching"
+#     @btime begin 
+#         for i in $intr
+#             ld = $d2[i]
+#             for s in $strr
+#                 ld[s] = "blo"
+#             end
+#         end
+#     end
+#     @assert length(d1) == sum(length.(values(d2)))
+# end
+
+##
+    # @btime begin 
+    #     for _ in 1:100
+    #         for i in 1:N
+    #             ld::Dict{Int, String} = $d2[i] 
+    #             for s in 1:N
+    #                 ld[Int(s)] = "blo"
+    #             end
+    #         end
+    #     end
+    # end
+
+    
+
+# end
+
+
+## ---------------------------------------------------------
+# using BenchmarkTools
+# let
+#     N, M = 1000, 1600
+#     # is = 1:rand(1:N)
+#     is = 1:N
+#     # js = [1:rand(1:M) for i in is]
+#     js = [1:M for i in is]
+
+#     function fun1(d, is, js)
+#         unfea_is = setdiff(keys(d), is)
+#         foreach((i) -> delete!(d, i), unfea_is)
+#         for i in is
+#             ld = d[i]
+#             unfea_js = setdiff(keys(ld), js[i])
+#             foreach((j) -> delete!(ld, j), unfea_js)
+#         end
+#     end
+
+#     function fun2(d, is, js)
+#         unfea_is = setdiff(keys(d), is)
+#         for i in is
+#             ld = d[i]
+#             unfea_js = setdiff(keys(ld), js[i])
+#         end
+#     end
+
+#     function fun3(d, is, js)
+#         for (i, di) in d
+#             foreach((j) -> di[j] = 0.0, keys(di))
+#         end
+
+#         for i in is
+#             di = d[i]
+#             @inbounds for j in js[i]
+#                 di[j] = 1.0
+#             end
+#         end
+#     end
+
+#     # @info "fun1"
+#     # d1 = Dict(i => Dict(j => rand() for j in 1:M) for i in 1:N)
+#     # @btime $fun1($d1, $is, $js)
+
+#     # @info "fun2"
+#     # d2 = Dict(i => Dict(j => rand() for j in 1:M) for i in 1:N)
+#     # @btime $fun2($d2, $is, $js)
+
+#     @info "fun3"
+#     d3 = Dict(i => Dict(j => rand() for j in 1:M) for i in 1:N)
+#     @btime $fun3($d3, $is, $js)
+
+#     # @assert sum(length.(values(d1))) == sum(length.(values(d3)))
+# end
+
+# ## ---------------------------------------------------------
+# let
+#     M, N = 3000, 3000
+#     d = Dict{Int, Dict{Int, Float64}}(i => Dict(j => rand() for j in 1:M) for i in 1:N)
+
+#     function fun1(d::Dict{Int, Dict{Int, Float64}})
+#         c = 0.0
+#         for i in 1:N
+#             di = get!(d, i, Dict{Int, Float64}())
+#             for j in 1:M
+#                 c += get!(di, j, 0.0)
+#             end
+#         end
+#         c
+#     end
+
+#     function fun2(d::Dict{Int, Dict{Int, Float64}})
+#         c = 0.0
+#         for i in 1:N
+#             di = haskey(d, i) ? d[i] : Dict{Int, Float64}()
+#             for j in 1:M
+#                 c += haskey(di, j) ? di[j] : 0.0
+#             end
+#         end
+#         c
+#     end
+
+#     function fun3(d::Dict{A, Dict{B, C}}) where {A, B, C}
+#         c = zero(C)
+#         for i in 1:N
+#             di = haskey(d, i) ? d[i] : Dict{B, C}()
+#             for j in 1:M
+#                 c += haskey(di, j) ? di[j] : zero(C)
+#             end
+#         end
+#         c
+#     end
+
+#     # function fun3(d::Dict{Int, Dict{Int, Float64}})
+#     #     c = 0.0
+#     #     for i in 1:N
+#     #         di::Dict{Int, Float64} = if haskey(d, i); d[i]; else Dict{Int, Float64}() end
+#     #         for j in 1:M
+#     #             c += if haskey(di, j); di[j]; else 0.0 end::Float64
+#     #         end
+#     #     end
+#     #     c
+#     # end
+
+#     d1 = deepcopy(d)
+#     @info "fun1" fun1(d1)
+#     @btime $fun1($d1)
+    
+#     d2 = deepcopy(d)
+#     @info "fun2" fun2(d2)
+#     @btime $fun2($d2)
+    
+#     d3 = deepcopy(d)
+#     @info "fun3" fun3(d3)
+#     @btime $fun3($d3)
+
+#     # @code_warntype fun2(d)
+
+#     nothing
 # end

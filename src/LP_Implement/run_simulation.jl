@@ -40,13 +40,16 @@ function run_simulation!(M::SimModel;
         for (i, vatp) in enumerate(vatp_range)
             @inbounds vg_range = vg_ranges[i]
 
-            lXb = get!(Xb, vatp, Dict{Float64, Float64}())
+            lXb = haskey(Xb, vatp) ? Xb[vatp] : Dict{Float64, Float64}()
             
-            Σvg__X[vatp] = sum(get!(lXb, vg, Xmin) for vg in vg_range)
+            Σvg__Xi = 0.0
+            for vg in vg_range
+                Σvg__Xi += get!(lXb, vg, Xmin)
+            end
+            Σvg__X[vatp] = Σvg__Xi
 
             vg0 = first(vg_range)
             z[vatp] = cache[vatp][vg0][obj_idx]
-            # vgN[vatp] = length(vg_range)
         end
 
         Σ_vatp_vg__z_X = sum(z[vatp] * Σvg__X[vatp] for vatp in vatp_range)
@@ -71,13 +74,15 @@ function run_simulation!(M::SimModel;
         
         ## ---------------------------------------------------------
         # Update Xb (let unfeasible out)
-        temp_Xb = deepcopy(Xb)
-        empty!(Xb)
-        for (i, vatp) in enumerate(vatp_range)
-            lXb = Xb[vatp] = Dict{Float64, Float64}() 
-            for vg in @inbounds vg_ranges[i]
-                lXb[vg] = temp_Xb[vatp][vg]
-            end
+        # vatp
+        unfea_vatp = setdiff(keys(Xb), vatp_range)
+        foreach((vatp) -> delete!(Xb, vatp), unfea_vatp)
+        
+        # vg
+        foreach(enumerate(vatp_range)) do (i, vatp)
+            lXb = Xb[vatp]
+            @inbounds unfea_vg = setdiff(keys(lXb), vg_ranges[i])
+            foreach((vg) -> delete!(lXb, vg), unfea_vg)
         end
         X = sum(sum.(values.(values(Xb))))
 
@@ -101,7 +106,6 @@ function run_simulation!(M::SimModel;
         # update sl
         Δsl = -Σ_vatp_vg__vl_X + M.D * (M.cl - sl)
         sl = max(0.0, damp * sl + (1 - damp) * (sl + Δsl))
-        
 
         ## ---------------------------------------------------------
         # Store
@@ -111,7 +115,7 @@ function run_simulation!(M::SimModel;
 
         ## ---------------------------------------------------------
         # Update polytope
-        net.ub[vg_idx] = max(net.lb[vg_idx], (M.Vg * sg) / (M.Kg + sg))
+        net.ub[vg_idx] = max(net.lb[vg_idx], (Vg * sg) / (Kg + sg))
 
         ## ---------------------------------------------------------
         # Verbose
