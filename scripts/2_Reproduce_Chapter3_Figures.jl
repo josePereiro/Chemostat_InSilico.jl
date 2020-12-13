@@ -10,8 +10,26 @@ using Plots
 using Serialization
 using Base.Threads
 using Dates
+using Base.Threads
 
-## ---------------------------------------------------------
+# ---------------------------------------------------------
+# let
+#     N = 100
+#     chuncks = InU.get_chuncks(1:N, 4, th = -1)
+#     for _ in 1:1000
+#         d = Dict()
+#         for chunck in chuncks, i in chunck
+#             d[i] = rand()
+#         end
+#         @threads for chunck in chuncks
+#             for i in chunck
+#                 d[i] = rand()
+#             end
+#         end
+#         length(d) |> println
+#     end
+# end
+# ---------------------------------------------------------
 let
     M0 = InLP.SimModel(;
         θvatp = 2, 

@@ -33,53 +33,50 @@ function run_simulation!(M::SimModel;
             ## ---------------------------------------------------------
             # ranges
             vatp_range, vg_ranges = vatpvg_ranges(M::SimModel)
-            vatp_chunks = get_chuncks(vatp_range, nthreads(); th = length(vatp_range) / 2)
+            i_vatp_range = collect(enumerate(vatp_range))
             vatpvgN = sum(length.(values(vg_ranges))) # total regions
+            vatpN = length(vatp_range)
 
             # vatp dependent
-            z = Dict{Float64, Float64}()
-            Σvg__X = Dict{Float64, Float64}()
+            z = zeros(vatpN)
+            Σvg__X = zeros(vatpN)
 
-            @threads for chunck in vatp_chunks
-                for vatp in chunck #vatp_range
-                    vg_range = vg_ranges[vatp]
 
-                    lXb = haskey(Xb, vatp) ? Xb[vatp] : (Xb[vatp] = Dict{Float64, Float64}())
-                    
-                    Σvg__Xi = 0.0
-                    for vg in vg_range
-                        Σvg__Xi += haskey(lXb, vg) ? lXb[vg] : (lXb[vg] = Xmin)
-                    end
-                    Σvg__X[vatp] = Σvg__Xi
+            for (vatpi, vatp) in i_vatp_range
+                vg_range = vg_ranges[vatp]
 
-                    vg0 = first(vg_range)
-                    z[vatp] = cache[vatp][vg0][obj_idx]
+                lXb = haskey(Xb, vatp) ? Xb[vatp] : (Xb[vatp] = Dict{Float64, Float64}())
+                
+                Σvg__Xi = 0.0
+                for vg in vg_range
+                    Σvg__Xi += haskey(lXb, vg) ? lXb[vg] : (lXb[vg] = Xmin)
                 end
+                Σvg__X[vatpi] = Σvg__Xi
+
+                vg0 = first(vg_range)
+                z[vatpi] = cache[vatp][vg0][obj_idx]
             end
 
-            sum(z[vatp] for vatp in vatp_range)
-            sum(Σvg__X[vatp] for vatp in vatp_range)
-            Σ_vatp_vg__z_X = sum(z[vatp] * Σvg__X[vatp] for vatp in vatp_range)
+            Σ_vatp_vg__z_X = sum(z[vatpi] * Σvg__X[vatpi] for (vatpi, vatp) in i_vatp_range)
             term2 = M.ϵ * (Σ_vatp_vg__z_X) / vatpvgN
 
-            @threads for chunck in vatp_chunks
-                for vatp in chunck # vatp_range
-                    vg_range = vg_ranges[vatp]
-
-                    vgN = length(vg_range)
-                    term1 = (1 - M.ϵ) * (z[vatp]* Σvg__X[vatp]) / vgN
-                    
-                    lXb = Xb[vatp]
-                    for vg in vg_range
-                        Xᵢ₋₁ = lXb[vg]
-                        term3 = Xᵢ₋₁ * M.D
-                        # update X
-                        ΔX = term1 + term2 - term3
-                        Xᵢ = (damp * Xᵢ₋₁) + (1 - damp) * (Xᵢ₋₁ - ΔX)
-                        lXb[vg] = max(Xmin, Xᵢ)
-                    end
+            @threads for (vatpi, vatp) in i_vatp_range
+                vg_range = vg_ranges[vatp]
+                
+                vgN = length(vg_range)
+                term1 = (1 - M.ϵ) * (z[vatpi]* Σvg__X[vatpi]) / vgN
+                
+                lXb = Xb[vatp]
+                for vg in vg_range
+                    Xᵢ₋₁ = lXb[vg]
+                    term3 = Xᵢ₋₁ * M.D
+                    # update X
+                    ΔX = term1 + term2 - term3
+                    Xᵢ = (damp * Xᵢ₋₁) + (1 - damp) * (Xᵢ₋₁ - ΔX)
+                    lXb[vg] = max(Xmin, Xᵢ)
                 end
             end
+            # end
             
             ## ---------------------------------------------------------
             # Update Xb (let unfeasible out)
@@ -97,18 +94,27 @@ function run_simulation!(M::SimModel;
 
             ## ---------------------------------------------------------
             # concs
-            Σ_vatp_vg__vg_X = 0.0
-            Σ_vatp_vg__vl_X = 0.0
-            for vatp in vatp_range
+            # Σ_vatp_vg__vg_X = 0.0
+            # Σ_vatp_vg__vl_X = 0.0
+            Σ_vatp_vg__vg_X_pool = zeros(nthreads())
+            Σ_vatp_vg__vl_X_pool = zeros(nthreads())
+            @threads for (vatpi, vatp) in i_vatp_range
+                tid = threadid()
                 lcache = cache[vatp]
                 lXb = Xb[vatp]
                 for vg in vg_ranges[vatp]
                     vl = lcache[vg][vl_idx]
                     lX = lXb[vg]
-                    Σ_vatp_vg__vg_X += vg * lX
-                    Σ_vatp_vg__vl_X += vl * lX
+                    # Σ_vatp_vg__vg_X += vg * lX
+                    Σ_vatp_vg__vg_X_pool[tid] += vg * lX
+                    # Σ_vatp_vg__vl_X += vl * lX
+                    Σ_vatp_vg__vl_X_pool[tid] += vl * lX
+
                 end
             end
+            Σ_vatp_vg__vg_X = sum(Σ_vatp_vg__vg_X_pool)
+            Σ_vatp_vg__vl_X = sum(Σ_vatp_vg__vl_X_pool)
+
             # update sg
             Δsg = -Σ_vatp_vg__vg_X + M.D * (M.cg - sg)
             sg = max(0.0, damp * sg + (1 - damp) * (sg + Δsg))
