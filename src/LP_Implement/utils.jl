@@ -13,12 +13,12 @@ function vatpvg_ranges(net::MetNet, θvatp, vatp_idx, θvg, vg_idx;
     # ranges
     vatpL, vatpU = fva(net, vatp_idx)
     vatp_range = vrange(vatpL - vatp_margin, vatpU + vg_margin, θvatp)
-    vg_ranges = Vector{typeof(vatp_range)}(undef, length(vatp_range))
-    for (i, vatp) in enumerate(vatp_range)
+    vg_ranges = Dict{Float64, typeof(vatp_range)}()
+    for vatp in vatp_range
         vgL, vgU = fixxing(net, vatp_idx, vatp) do 
             fva(net, vg_idx)
         end
-        @inbounds vg_ranges[i] = vrange(vgL - vg_margin, vgU + vg_margin, θvg)
+        vg_ranges[vatp] = vrange(vgL - vg_margin, vgU + vg_margin, θvg)
     end
     return vatp_range, vg_ranges
 end

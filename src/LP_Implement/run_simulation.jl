@@ -25,102 +25,114 @@ function run_simulation!(M::SimModel;
     verbose && (prog = Progress(M.niters; desc = "Simulating ... "))
     for it in 1:M.niters
 
-        ## ---------------------------------------------------------
-        at_iter(it, M) # feed back
+        ittime = @elapsed begin
 
-        ## ---------------------------------------------------------
-        # ranges
-        vatp_range, vg_ranges = vatpvg_ranges(M::SimModel)
-        vatpvgN = sum(length.(values(vg_ranges))) # total regions
+            ## ---------------------------------------------------------
+            at_iter(it, M) # feed back
 
-        # vatp dependent
-        z = Dict{Float64, Float64}()
-        Σvg__X = Dict{Float64, Float64}()
+            ## ---------------------------------------------------------
+            # ranges
+            vatp_range, vg_ranges = vatpvg_ranges(M::SimModel)
+            vatp_chunks = get_chuncks(vatp_range, nthreads(); th = length(vatp_range) / 2)
+            vatpvgN = sum(length.(values(vg_ranges))) # total regions
 
-        for (i, vatp) in enumerate(vatp_range)
-            @inbounds vg_range = vg_ranges[i]
+            # vatp dependent
+            z = Dict{Float64, Float64}()
+            Σvg__X = Dict{Float64, Float64}()
 
-            lXb = haskey(Xb, vatp) ? Xb[vatp] : Dict{Float64, Float64}()
+            @threads for chunck in vatp_chunks
+                for vatp in chunck #vatp_range
+                    vg_range = vg_ranges[vatp]
+
+                    lXb = haskey(Xb, vatp) ? Xb[vatp] : (Xb[vatp] = Dict{Float64, Float64}())
+                    
+                    Σvg__Xi = 0.0
+                    for vg in vg_range
+                        Σvg__Xi += haskey(lXb, vg) ? lXb[vg] : (lXb[vg] = Xmin)
+                    end
+                    Σvg__X[vatp] = Σvg__Xi
+
+                    vg0 = first(vg_range)
+                    z[vatp] = cache[vatp][vg0][obj_idx]
+                end
+            end
+
+            sum(z[vatp] for vatp in vatp_range)
+            sum(Σvg__X[vatp] for vatp in vatp_range)
+            Σ_vatp_vg__z_X = sum(z[vatp] * Σvg__X[vatp] for vatp in vatp_range)
+            term2 = M.ϵ * (Σ_vatp_vg__z_X) / vatpvgN
+
+            @threads for chunck in vatp_chunks
+                for vatp in chunck # vatp_range
+                    vg_range = vg_ranges[vatp]
+
+                    vgN = length(vg_range)
+                    term1 = (1 - M.ϵ) * (z[vatp]* Σvg__X[vatp]) / vgN
+                    
+                    lXb = Xb[vatp]
+                    for vg in vg_range
+                        Xᵢ₋₁ = lXb[vg]
+                        term3 = Xᵢ₋₁ * M.D
+                        # update X
+                        ΔX = term1 + term2 - term3
+                        Xᵢ = (damp * Xᵢ₋₁) + (1 - damp) * (Xᵢ₋₁ - ΔX)
+                        lXb[vg] = max(Xmin, Xᵢ)
+                    end
+                end
+            end
             
-            Σvg__Xi = 0.0
-            for vg in vg_range
-                Σvg__Xi += get!(lXb, vg, Xmin)
-            end
-            Σvg__X[vatp] = Σvg__Xi
-
-            vg0 = first(vg_range)
-            z[vatp] = cache[vatp][vg0][obj_idx]
-        end
-
-        Σ_vatp_vg__z_X = sum(z[vatp] * Σvg__X[vatp] for vatp in vatp_range)
-        term2 = M.ϵ * (Σ_vatp_vg__z_X) / vatpvgN
-
-        for (i, vatp) in enumerate(vatp_range)
-            @inbounds vg_range = vg_ranges[i]
-
-            vgN = length(vg_range)
-            term1 = (1 - M.ϵ) * (z[vatp]* Σvg__X[vatp]) / vgN
+            ## ---------------------------------------------------------
+            # Update Xb (let unfeasible out)
+            # vatp
+            unfea_vatp = setdiff(keys(Xb), vatp_range)
+            foreach((vatp) -> delete!(Xb, vatp), unfea_vatp)
             
-            lXb = Xb[vatp]
-            for vg in vg_range
-                Xᵢ₋₁ = lXb[vg]
-                term3 = Xᵢ₋₁ * M.D
-                # update X
-                ΔX = term1 + term2 - term3
-                Xᵢ = (damp * Xᵢ₋₁) + (1 - damp) * (Xᵢ₋₁ - ΔX)
-                lXb[vg] = max(Xmin, Xᵢ)
+            # vg
+            foreach(vatp_range) do vatp
+                lXb = Xb[vatp]
+                unfea_vg = setdiff(keys(lXb), vg_ranges[vatp])
+                foreach((vg) -> delete!(lXb, vg), unfea_vg)
             end
-        end
-        
-        ## ---------------------------------------------------------
-        # Update Xb (let unfeasible out)
-        # vatp
-        unfea_vatp = setdiff(keys(Xb), vatp_range)
-        foreach((vatp) -> delete!(Xb, vatp), unfea_vatp)
-        
-        # vg
-        foreach(enumerate(vatp_range)) do (i, vatp)
-            lXb = Xb[vatp]
-            @inbounds unfea_vg = setdiff(keys(lXb), vg_ranges[i])
-            foreach((vg) -> delete!(lXb, vg), unfea_vg)
-        end
-        X = sum(sum.(values.(values(Xb))))
+            X = sum(sum.(values.(values(Xb))))
 
-        ## ---------------------------------------------------------
-        # concs
-        Σ_vatp_vg__vg_X = 0.0
-        Σ_vatp_vg__vl_X = 0.0
-        for (i, vatp) in enumerate(vatp_range)
-            lcache = cache[vatp]
-            lXb = Xb[vatp]
-            for vg in @inbounds vg_ranges[i]
-                vl = lcache[vg][vl_idx]
-                lX = lXb[vg]
-                Σ_vatp_vg__vg_X += vg * lX
-                Σ_vatp_vg__vl_X += vl * lX
+            ## ---------------------------------------------------------
+            # concs
+            Σ_vatp_vg__vg_X = 0.0
+            Σ_vatp_vg__vl_X = 0.0
+            for vatp in vatp_range
+                lcache = cache[vatp]
+                lXb = Xb[vatp]
+                for vg in vg_ranges[vatp]
+                    vl = lcache[vg][vl_idx]
+                    lX = lXb[vg]
+                    Σ_vatp_vg__vg_X += vg * lX
+                    Σ_vatp_vg__vl_X += vl * lX
+                end
             end
-        end
-        # update sg
-        Δsg = -Σ_vatp_vg__vg_X + M.D * (M.cg - sg)
-        sg = max(0.0, damp * sg + (1 - damp) * (sg + Δsg))
-        # update sl
-        Δsl = -Σ_vatp_vg__vl_X + M.D * (M.cl - sl)
-        sl = max(0.0, damp * sl + (1 - damp) * (sl + Δsl))
+            # update sg
+            Δsg = -Σ_vatp_vg__vg_X + M.D * (M.cg - sg)
+            sg = max(0.0, damp * sg + (1 - damp) * (sg + Δsg))
+            # update sl
+            Δsl = -Σ_vatp_vg__vl_X + M.D * (M.cl - sl)
+            sl = max(0.0, damp * sl + (1 - damp) * (sl + Δsl))
 
-        ## ---------------------------------------------------------
-        # Store
-        push!(X_ts, X)
-        push!(sl_ts, sl)
-        push!(sg_ts, sg)
+            ## ---------------------------------------------------------
+            # Store
+            push!(X_ts, X)
+            push!(sl_ts, sl)
+            push!(sg_ts, sg)
 
-        ## ---------------------------------------------------------
-        # Update polytope
-        net.ub[vg_idx] = max(net.lb[vg_idx], (Vg * sg) / (Kg + sg))
+            ## ---------------------------------------------------------
+            # Update polytope
+            net.ub[vg_idx] = max(net.lb[vg_idx], (Vg * sg) / (Kg + sg))
+
+        end # t = @elapsed begin
 
         ## ---------------------------------------------------------
         # Verbose
         verbose && update!(prog, it; showvalues = [
                 (:it, it),
+                (:ittime, ittime),
                 (:D, M.D),
                 (:damp, damp),
                 (": ------ ", "------------------"),
@@ -136,6 +148,7 @@ function run_simulation!(M::SimModel;
         )
 
     end # for it in 1:niters
+
     verbose && finish!(prog)
 
     return M

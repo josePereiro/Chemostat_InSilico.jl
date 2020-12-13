@@ -1,9 +1,10 @@
 import DrWatson: quickactivate
 quickactivate(@__DIR__, "Chemostat_InSilico")
 
-using Chemostat_InSilico
-using Chemostat_InSilico.LP_Implement
-using Chemostat_InSilico.Utilities
+import Chemostat_InSilico
+const InLP = Chemostat_InSilico.LP_Implement
+const InU = Chemostat_InSilico.Utilities
+
 using ProgressMeter
 using Plots
 using Serialization
@@ -11,13 +12,27 @@ using Base.Threads
 using Dates
 
 ## ---------------------------------------------------------
+let
+    M0 = InLP.SimModel(;
+        θvatp = 2, 
+        θvg = 3, 
+        niters = Int(1e8),
+        sg0 = 4.5,
+        X0 = 0.3,
+        damp = 0.98,
+        D = 0.01
+    )
+    vatp_range, vg_ranges = InLP.vatpvg_ranges(M0)
+    InU.get_chuncks(vatp_range, 4, th = 1)
+end
+## ---------------------------------------------------------
 # Find X0
 let
 
     sim_name = "Ch3_$(now())"
     @info "Doing" sim_name
 
-    M0 = SimModel(;
+    M0 = InLP.SimModel(;
             θvatp = 2, 
             θvg = 3, 
             niters = Int(1e8),
@@ -27,27 +42,27 @@ let
             D = 0.01
         )
         
-    writing_lock = ReentrantLock()
-        
     # cache
-    vgvatp_cache(M0)
+    InLP.vgvatp_cache(M0)
 
     # simulation
     M = deepcopy(M0)
 
-    save_frec = M.niters ÷ 1000
+    save_frec = 1000
 
     # TODO: make a real chemostat. move D to get a given X
     function at_iter(it, M)
-        (it == 1 || it % save_frec != 0 || it == M.niters) && return
+        if (it == 1 || it % save_frec == 0 || it == M.niters)
 
-        fname = mysavename(sim_name, "png"; it, M.D, M.damp)
-        # serialize(joinpath(CH3_DATA_DIR, datname), M)
-        path = joinpath(CH3_FIGURES_DIR, fname)
-        p = plot_res(M)
-        savefig(p, path)
+            fname = InLP.mysavename(sim_name, "png"; it, M.D, M.damp)
+            # serialize(joinpath(InLP.CH3_DATA_DIR, datname), M)
+            path = joinpath(InLP.CH3_FIGURES_DIR, fname)
+            p = InLP.plot_res(M)
+            savefig(p, path)
+
+        end
     end
-    run_simulation!(M; at_iter, verbose = true)
+    InLP.run_simulation!(M; at_iter, verbose = true)
 
 end
 ##
@@ -74,10 +89,10 @@ end
     #             println()
     #         end    
     #     end
-    #     run_simulation!(M; verbose = false)
+    #     InLP.run_simulation!(M; verbose = false)
 
-    #     datname = mysavename("Ch3_", "jld"; M.D, M.damp)
-    #     serialize(joinpath(CH3_DATA_DIR, datname), M)
+    #     datname = InLP.mysavename("Ch3_", "jld"; M.D, M.damp)
+    #     serialize(joinpath(InLP.CH3_DATA_DIR, datname), M)
 
     #     lock(writing_lock) do
     #         @info "Finised" threadid() D
@@ -96,14 +111,14 @@ end
     # X = -1
     # X0 = grad_desc(;target, x0, x1, C, th = 1e-7, verbose = false) do x
 
-    #     local M = SimModel(
+    #     local M = InLP.SimModel(
     #         θvatp = 2, 
     #         θvg = 3, 
     #         niters = 10,
     #         X0 = first(x)
     #     )
 
-    #     lX = last(run_simulation!(M; cache, verbose = true).X_ts)
+    #     lX = last(InLP.run_simulation!(M; cache, verbose = true).X_ts)
     #     dX = abs(lX - X) / max(lX, X)
     #     X = lX
     #     return dX
@@ -158,9 +173,9 @@ end
 #     end
 #     X_ts, sg_ts, sl_ts, Xb = run_simulation(P; at_iter)
 
-#     fname = mysavename("Ch3sim_"; P.X0, P.niters, P.ϵ)
+#     fname = InLP.mysavename("Ch3sim_"; P.X0, P.niters, P.ϵ)
 #     @show fname
-#     simfile = joinpath(CH3_DATA_DIR, string(fname, ".jld"))
+#     simfile = joinpath(InLP.CH3_DATA_DIR, string(fname, ".jld"))
 #     serialize(simfile, (X_ts, sg_ts, sl_ts, Xb, P, Ds))
 #     # X_ts, sg_ts, sl_ts, Xb, P, Ds = deserialize(simfile)
 #     p1 = plot(xlabel = "time", ylabel = "conc")
@@ -173,7 +188,7 @@ end
 #     p = plot([p1, p2]...)
 
 #     # save fig
-#     figname = joinpath(CH3_FIGURES_DIR, string(fname, ".png"))
+#     figname = joinpath(InLP.CH3_FIGURES_DIR, string(fname, ".png"))
 #     savefig(p, figname)
 # end
 
