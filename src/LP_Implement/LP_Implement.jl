@@ -16,6 +16,7 @@ export SimModel, run_simulation!, vgvatp_cache, plot_res
 include("LP.jl")
 include("MetNets.jl")
 include("SimModel.jl")
+include("range.jl")
 include("utils.jl")
 include("cache.jl")
 include("run_simulation.jl")

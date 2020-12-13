@@ -26,6 +26,10 @@ function run_simulation!(M::SimModel;
     net_pool = map((i) -> deepcopy(M.net), 1:nthreads())
 
     verbose && (prog = Progress(M.niters; desc = "Simulating ... "))
+    i_vatp_range, vatp_range, vg_ranges = nothing, nothing, nothing
+    vg_ub0, vl_ub0 = Inf, Inf
+    vatpvgN, vatpN = 0.0, 0.0
+    recompute_ranges_th = (10.0^(-M.θvg))/3
     for it in 1:M.niters
 
         ittime = @elapsed begin
@@ -34,10 +38,18 @@ function run_simulation!(M::SimModel;
             at_iter(it, M) # feed back
 
             ## ---------------------------------------------------------
-            # ranges
-            i_vatp_range, vatp_range, vg_ranges = ivatpvg_ranges(M, net_pool)
-            vatpvgN = sum(length.(values(vg_ranges))) # total regions
-            vatpN = length(i_vatp_range)
+            # Check if the polytope changed
+            politope_changed = abs(M.net.ub[vg_idx] - vg_ub0) > recompute_ranges_th ||
+                               abs(M.net.ub[vl_idx] - vl_ub0) > recompute_ranges_th
+
+            ## ---------------------------------------------------------
+            # ranges (recompute ranges if the polytope change)
+            if politope_changed
+                i_vatp_range, vatp_range, vg_ranges = ivatpvg_ranges(M, net_pool)
+                vatpvgN = sum(length.(values(vg_ranges))) # total regions
+                vatpN = length(i_vatp_range)
+                vg_ub0, vl_ub0 = M.net.ub[vg_idx], M.net.ub[vl_idx]
+            end
 
             # vatp dependent
             z = zeros(vatpN)
@@ -83,14 +95,16 @@ function run_simulation!(M::SimModel;
             ## ---------------------------------------------------------
             # Update Xb (let unfeasible out)
             # vatp
-            unfea_vatp = setdiff(keys(Xb), vatp_range)
-            foreach((vatp) -> delete!(Xb, vatp), unfea_vatp)
-            
-            # vg
-            for (vatpi, vatp) in i_vatp_range
-                lXb = Xb[vatp]
-                unfea_vg = setdiff(keys(lXb), vg_ranges[vatpi])
-                foreach((vg) -> delete!(lXb, vg), unfea_vg)
+            if politope_changed
+                unfea_vatp = setdiff(keys(Xb), vatp_range)
+                foreach((vatp) -> delete!(Xb, vatp), unfea_vatp)
+                
+                # vg
+                for (vatpi, vatp) in i_vatp_range
+                    lXb = Xb[vatp]
+                    unfea_vg = setdiff(keys(lXb), vg_ranges[vatpi])
+                    foreach((vg) -> delete!(lXb, vg), unfea_vg)
+                end
             end
             X = sum(sum.(values.(values(Xb))))
 
@@ -144,6 +158,7 @@ function run_simulation!(M::SimModel;
                 (:ittime, ittime),
                 (:D, M.D),
                 (:damp, damp),
+                (:politope_changed, politope_changed),
                 (": ------ ", "------------------"),
                 (:X, X),
                 (:sg, sg),
