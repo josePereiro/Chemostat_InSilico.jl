@@ -11,13 +11,14 @@ using Base.Threads
 
 export MAX_SENSE, MIN_SENSE, fba, fva
 export MetNet, ToyModel, rxnindex, metindex, fix!, fixxing, Δv, U, L, ABS_MAX_BOUND
-export SimModel, run_simulation!, vgvatp_cache, plot_res
+export SimModel, ResTS, run_simulation!, vgvatp_cache, plot_res
 
 include("LP.jl")
 include("MetNets.jl")
 include("SimModel.jl")
+include("ResTS.jl")
 include("range.jl")
-include("utils.jl")
+include("plot.jl")
 include("cache.jl")
 include("run_simulation.jl")
 

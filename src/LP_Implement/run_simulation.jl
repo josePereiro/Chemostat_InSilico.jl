@@ -10,17 +10,16 @@ function run_simulation!(M::SimModel;
 
     ## ---------------------------------------------------------
     # extract model
-    sl_ts, sg_ts, X_ts, Xb = M.sl_ts, M.sg_ts, M.X_ts, M.Xb
-    sg, sl = last(sg_ts), last(sl_ts)
+    Xb =  M.Xb
     vatp_idx, vg_idx, vl_idx, obj_idx = M.vatp_idx, M.vg_idx, M.vl_idx, M.obj_idx
     Vg, Kg, Vl, Kl = M.Vg, M.Kg, M.Vl, M.Kl
-    damp, Xmin = M.damp, M.Xmin
+    damp, Xmin, Xmax = M.damp, M.Xmin, M.Xmax
     
     ## ---------------------------------------------------------
     # update model
     function update_net!(net) 
-        net.ub[vg_idx] = max(net.lb[vg_idx], (Vg * sg) / (Kg + sg))
-        net.ub[vl_idx] = max(net.lb[vl_idx], (Vl * sl) / (Kl + sl))
+        net.ub[vg_idx] = max(net.lb[vg_idx], (Vg * M.sg) / (Kg + M.sg))
+        net.ub[vl_idx] = max(net.lb[vl_idx], (Vl * M.sl) / (Kl + M.sl))
     end
     update_net!(M.net) 
     net_pool = map((i) -> deepcopy(M.net), 1:nthreads())
@@ -87,7 +86,7 @@ function run_simulation!(M::SimModel;
                     # update X
                     ΔX = term1 + term2 - term3
                     Xᵢ = (damp * Xᵢ₋₁) + (1 - damp) * (Xᵢ₋₁ - ΔX)
-                    lXb[vg] = max(Xmin, Xᵢ)
+                    lXb[vg] = clamp(Xᵢ, Xmin, Xmax)
                 end
             end
             # end
@@ -106,12 +105,10 @@ function run_simulation!(M::SimModel;
                     foreach((vg) -> delete!(lXb, vg), unfea_vg)
                 end
             end
-            X = sum(sum.(values.(values(Xb))))
+            M.X = sum(sum.(values.(values(Xb))))
 
             ## ---------------------------------------------------------
             # concs
-            # Σ_vatp_vg__vg_X = 0.0
-            # Σ_vatp_vg__vl_X = 0.0
             Σ_vatp_vg__vg_X_pool = zeros(nthreads())
             Σ_vatp_vg__vl_X_pool = zeros(nthreads())
             @threads for (vatpi, vatp) in i_vatp_range
@@ -121,9 +118,7 @@ function run_simulation!(M::SimModel;
                 for vg in vg_ranges[vatpi]
                     vl = lcache[vg][vl_idx]
                     lX = lXb[vg]
-                    # Σ_vatp_vg__vg_X += vg * lX
                     Σ_vatp_vg__vg_X_pool[tid] += vg * lX
-                    # Σ_vatp_vg__vl_X += vl * lX
                     Σ_vatp_vg__vl_X_pool[tid] += vl * lX
 
                 end
@@ -132,17 +127,11 @@ function run_simulation!(M::SimModel;
             Σ_vatp_vg__vl_X = sum(Σ_vatp_vg__vl_X_pool)
 
             # update sg
-            Δsg = -Σ_vatp_vg__vg_X + M.D * (M.cg - sg)
-            sg = max(0.0, damp * sg + (1 - damp) * (sg + Δsg))
+            Δsg = -Σ_vatp_vg__vg_X + M.D * (M.cg - M.sg)
+            M.sg = max(0.0, damp * M.sg + (1 - damp) * (M.sg + Δsg))
             # update sl
-            Δsl = -Σ_vatp_vg__vl_X + M.D * (M.cl - sl)
-            sl = max(0.0, damp * sl + (1 - damp) * (sl + Δsl))
-
-            ## ---------------------------------------------------------
-            # Store
-            push!(X_ts, X)
-            push!(sl_ts, sl)
-            push!(sg_ts, sg)
+            Δsl = -Σ_vatp_vg__vl_X + M.D * (M.cl - M.sl)
+            M.sl = max(0.0, damp * M.sl + (1 - damp) * (M.sl + Δsl))
 
             ## ---------------------------------------------------------
             # Update polytope
@@ -160,10 +149,10 @@ function run_simulation!(M::SimModel;
                 (:damp, damp),
                 (:politope_changed, politope_changed),
                 (": ------ ", "------------------"),
-                (:X, X),
-                (:sg, sg),
+                (:X, M.X),
+                (:sg, M.sg),
                 (:Δsg, Δsg),
-                (:sl, sl),
+                (:sl, M.sl),
                 (:Δsl, Δsl),
                 (:vg_ub, M.net.ub[vg_idx]),
                 (:vatpvgN, vatpvgN),

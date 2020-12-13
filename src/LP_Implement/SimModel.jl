@@ -10,6 +10,7 @@ mutable struct SimModel
     θvatp::Int               # exactness of vatp discretization dvatp = 10.0^-(θvatp)
     θvg::Int                 # exactness of vg discretization dvatp = 10.0^-(θvg)
     Xmin::Float64            # minimal allowed cell density value of each quanta of the polytope
+    Xmax::Float64            # maximal allowed cell density value of each quanta of the polytope
     D::Float64               # Chemostat dilution rate
     
     cg::Float64              # feed G concentration
@@ -25,12 +26,13 @@ mutable struct SimModel
     damp::Float64            # numeric damp
 
     # Chemostat state
-    sg_ts::Vector{Float64}
-    sl_ts::Vector{Float64}
-    X_ts::Vector{Float64}
+    sg::Float64
+    sl::Float64
+    X::Float64
     Xb::Dict{Float64, Dict{Float64, Float64}}
 
-    function SimModel(;net = ToyModel(), θvatp = 2, θvg = 3, X0 = 0.22, Xmin = 1e-20, D = 1e-2, 
+    function SimModel(;net = ToyModel(), θvatp = 2, θvg = 3, 
+            X0 = 0.22, Xmin = 1e-20, Xmax = 1e20, D = 1e-2, 
             cg = 15.0, sg0 = 15.0, Kg = 0.5, Vg = 0.5, 
             cl = 0.0, sl0 = 0.0, Kl = 0.5, Vl = 0.0, 
             ϵ = 0.0, 
@@ -47,24 +49,25 @@ mutable struct SimModel
         vl_idx = rxnindex(net, vl_ider)
         obj_idx = rxnindex(net, obj_ider)
 
-        sg_ts = [sg0]; sl_ts = [sl0]
         Xb = Dict{Float64, Dict{Float64, Float64}}()
         vatp_range, vg_ranges = vatpvg_ranges(net, θvatp, vatp_idx, θvg, vg_idx)
         N = sum(length.(values(vg_ranges)))
+        Xi = X0/N
         for (vatpi, vatp) in enumerate(vatp_range)
             Xb[vatp] = Dict{Float64, Float64}()
             for vg in vg_ranges[vatpi]
-                Xb[vatp][vg] = X0/N
+                Xb[vatp][vg] = Xi
             end
         end
         X_ts = [X0]
         
-        new(net, vatp_idx, vg_idx, vl_idx, obj_idx,
-            θvatp, θvg, Xmin, D, 
+        new(
+            net, vatp_idx, vg_idx, vl_idx, obj_idx,
+            θvatp, θvg, Xmin, Xmax, D, 
             cg, Kg, Vg, 
             cl, Kl, Vl, 
             ϵ, niters, damp,  
-            sg_ts, sl_ts, X_ts, Xb
+            sg0, sl0, X0, Xb
         )
     end
 end
