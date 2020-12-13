@@ -29,6 +29,10 @@ function run_simulation!(M::SimModel;
     vg_ub0, vl_ub0 = Inf, Inf
     vatpvgN, vatpN = 0.0, 0.0
     recompute_ranges_th = (10.0^(-M.θvg))/3
+    lastΔXb = Dict{Float64, Dict{Float64, Float64}}()
+    lastΔsg = 0.0
+    lastΔsl = 0.0
+    ittime_prom = 0.0
     for it in 1:M.niters
 
         ittime = @elapsed begin
@@ -54,15 +58,16 @@ function run_simulation!(M::SimModel;
             z = zeros(vatpN)
             Σvg__X = zeros(vatpN)
 
-
             for (vatpi, vatp) in i_vatp_range
                 vg_range = vg_ranges[vatpi]
 
                 lXb = haskey(Xb, vatp) ? Xb[vatp] : (Xb[vatp] = Dict{Float64, Float64}())
+                llastΔXb = haskey(lastΔXb, vatp) ? lastΔXb[vatp] : (lastΔXb[vatp] = Dict{Float64, Float64}())
                 
                 Σvg__Xi = 0.0
                 for vg in vg_range
                     Σvg__Xi += haskey(lXb, vg) ? lXb[vg] : (lXb[vg] = Xmin)
+                    haskey(llastΔXb, vg) ? llastΔXb[vg] : (llastΔXb[vg] = 0.0)
                 end
                 Σvg__X[vatpi] = Σvg__Xi
 
@@ -80,13 +85,16 @@ function run_simulation!(M::SimModel;
                 term1 = (1 - M.ϵ) * (z[vatpi]* Σvg__X[vatpi]) / vgN
                 
                 lXb = Xb[vatp]
+                llastΔXb = lastΔXb[vatp]
                 for vg in vg_range
                     Xᵢ₋₁ = lXb[vg]
+                    lastΔX = llastΔXb[vg]
                     term3 = Xᵢ₋₁ * M.D
                     # update X
                     ΔX = term1 + term2 - term3
-                    Xᵢ = (damp * Xᵢ₋₁) + (1 - damp) * (Xᵢ₋₁ - ΔX)
+                    Xᵢ = (damp * Xᵢ₋₁) + (1 - damp) * (Xᵢ₋₁ + (ΔX + lastΔX)/2)
                     lXb[vg] = clamp(Xᵢ, Xmin, Xmax)
+                    llastΔXb[vg] = ΔX
                 end
             end
             # end
@@ -128,10 +136,12 @@ function run_simulation!(M::SimModel;
 
             # update sg
             Δsg = -Σ_vatp_vg__vg_X + M.D * (M.cg - M.sg)
-            M.sg = max(0.0, damp * M.sg + (1 - damp) * (M.sg + Δsg))
+            M.sg = max(0.0, damp * M.sg + (1 - damp) * (M.sg + (Δsg + lastΔsg)/2))
+            lastΔsg = Δsg
             # update sl
             Δsl = -Σ_vatp_vg__vl_X + M.D * (M.cl - M.sl)
-            M.sl = max(0.0, damp * M.sl + (1 - damp) * (M.sl + Δsl))
+            M.sl = max(0.0, damp * M.sl + (1 - damp) * (M.sl + (Δsl + lastΔsl)/2))
+            lastΔsl = Δsl
 
             ## ---------------------------------------------------------
             # Update polytope
@@ -141,10 +151,14 @@ function run_simulation!(M::SimModel;
         end # t = @elapsed begin
 
         ## ---------------------------------------------------------
+        ittime_prom = (ittime_prom * (it - 1) + ittime)/ it
+
+        ## ---------------------------------------------------------
         # Verbose
         verbose && update!(prog, it; showvalues = [
                 (:it, it),
                 (:ittime, ittime),
+                (:ittime_prom, ittime_prom),
                 (:D, M.D),
                 (:damp, damp),
                 (:politope_changed, politope_changed),
@@ -155,6 +169,7 @@ function run_simulation!(M::SimModel;
                 (:sl, M.sl),
                 (:Δsl, Δsl),
                 (:vg_ub, M.net.ub[vg_idx]),
+                (:vl_ub, M.net.ub[vl_idx]),
                 (:vatpvgN, vatpvgN),
                 (:Xb_len, sum(length.(values(Xb)))),
             ]
