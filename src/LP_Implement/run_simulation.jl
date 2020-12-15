@@ -13,7 +13,7 @@ function run_simulation!(M::SimModel;
     Xb =  M.Xb
     vatp_idx, vg_idx, vl_idx, obj_idx = M.vatp_idx, M.vg_idx, M.vl_idx, M.obj_idx
     Vg, Kg, Vl, Kl = M.Vg, M.Kg, M.Vl, M.Kl
-    damp, Xmin, Xmax = M.damp, M.Xmin, M.Xmax
+    damp, num_min, num_max = M.damp, M.num_min, M.num_max
     
     ## ---------------------------------------------------------
     # update model
@@ -66,7 +66,7 @@ function run_simulation!(M::SimModel;
                 
                 Σvg__Xi = 0.0
                 for vg in vg_range
-                    Σvg__Xi += haskey(lXb, vg) ? lXb[vg] : (lXb[vg] = Xmin)
+                    Σvg__Xi += haskey(lXb, vg) ? lXb[vg] : (lXb[vg] = num_min)
                     haskey(llastΔXb, vg) ? llastΔXb[vg] : (llastΔXb[vg] = 0.0)
                 end
                 Σvg__X[vatpi] = Σvg__Xi
@@ -92,8 +92,9 @@ function run_simulation!(M::SimModel;
                     term3 = Xᵢ₋₁ * M.D
                     # update X
                     ΔX = term1 + term2 - term3
-                    Xᵢ = (damp * Xᵢ₋₁) + (1 - damp) * (Xᵢ₋₁ + (ΔX + lastΔX)/2)
-                    lXb[vg] = clamp(Xᵢ, Xmin, Xmax)
+                    # ΔX = clamp(ΔX, num_min, num_max)
+                    Xᵢ = (damp * Xᵢ₋₁) + (1.0 - damp) * (Xᵢ₋₁ + (ΔX + lastΔX)/2)
+                    lXb[vg] = clamp(Xᵢ, num_min, num_max)
                     llastΔXb[vg] = ΔX
                 end
             end
@@ -102,17 +103,17 @@ function run_simulation!(M::SimModel;
             ## ---------------------------------------------------------
             # Update Xb (let unfeasible out)
             # vatp
-            if politope_changed
-                unfea_vatp = setdiff(keys(Xb), vatp_range)
-                foreach((vatp) -> delete!(Xb, vatp), unfea_vatp)
+            # if politope_changed
+                # unfea_vatp = setdiff(keys(Xb), vatp_range)
+                # foreach((vatp) -> delete!(Xb, vatp), unfea_vatp)
                 
-                # vg
-                for (vatpi, vatp) in i_vatp_range
-                    lXb = Xb[vatp]
-                    unfea_vg = setdiff(keys(lXb), vg_ranges[vatpi])
-                    foreach((vg) -> delete!(lXb, vg), unfea_vg)
-                end
-            end
+                # # vg
+                # for (vatpi, vatp) in i_vatp_range
+                #     lXb = Xb[vatp]
+                #     unfea_vg = setdiff(keys(lXb), vg_ranges[vatpi])
+                #     foreach((vg) -> delete!(lXb, vg), unfea_vg)
+                # end
+            # end
             M.X = sum(sum.(values.(values(Xb))))
 
             ## ---------------------------------------------------------
@@ -128,7 +129,6 @@ function run_simulation!(M::SimModel;
                     lX = lXb[vg]
                     Σ_vatp_vg__vg_X_pool[tid] += vg * lX
                     Σ_vatp_vg__vl_X_pool[tid] += vl * lX
-
                 end
             end
             Σ_vatp_vg__vg_X = sum(Σ_vatp_vg__vg_X_pool)
@@ -136,11 +136,13 @@ function run_simulation!(M::SimModel;
 
             # update sg
             Δsg = -Σ_vatp_vg__vg_X + M.D * (M.cg - M.sg)
-            M.sg = max(0.0, damp * M.sg + (1 - damp) * (M.sg + (Δsg + lastΔsg)/2))
+            # Δsg = clamp(Δsg, num_min, num_max)
+            M.sg = max(0.0, damp * M.sg + (1.0 - damp) * (M.sg + (Δsg + lastΔsg)/2))
             lastΔsg = Δsg
             # update sl
             Δsl = -Σ_vatp_vg__vl_X + M.D * (M.cl - M.sl)
-            M.sl = max(0.0, damp * M.sl + (1 - damp) * (M.sl + (Δsl + lastΔsl)/2))
+            # Δsl = clamp(Δsl, num_min, num_max)
+            M.sl = max(0.0, damp * M.sl + (1.0 - damp) * (M.sl + (Δsl + lastΔsl)/2))
             lastΔsl = Δsl
 
             ## ---------------------------------------------------------
@@ -155,7 +157,8 @@ function run_simulation!(M::SimModel;
 
         ## ---------------------------------------------------------
         # Verbose
-        verbose && update!(prog, it; showvalues = [
+        verbose && update!(prog, it; 
+            showvalues = [
                 (:it, it),
                 (:ittime, ittime),
                 (:ittime_prom, ittime_prom),

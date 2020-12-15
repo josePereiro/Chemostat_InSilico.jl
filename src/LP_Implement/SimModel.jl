@@ -9,8 +9,8 @@ mutable struct SimModel
     # Sim params
     θvatp::Int               # exactness of vatp discretization dvatp = 10.0^-(θvatp)
     θvg::Int                 # exactness of vg discretization dvatp = 10.0^-(θvg)
-    Xmin::Float64            # minimal allowed cell density value of each quanta of the polytope
-    Xmax::Float64            # maximal allowed cell density value of each quanta of the polytope
+    num_min::Float64         # minimal allowed numerical value
+    num_max::Float64         # maximal allowed numerical value 
     D::Float64               # Chemostat dilution rate
     
     cg::Float64              # feed G concentration
@@ -32,7 +32,7 @@ mutable struct SimModel
     Xb::Dict{Float64, Dict{Float64, Float64}}
 
     function SimModel(;net = ToyModel(), θvatp = 2, θvg = 3, 
-            X0 = 0.22, Xmin = 1e-20, Xmax = 1e20, D = 1e-2, 
+            X0 = 0.22, num_min = 1e-30, num_max = 1e30, D = 1e-2, 
             cg = 15.0, sg0 = 15.0, Kg = 0.5, Vg = 0.5, 
             cl = 0.0, sl0 = 0.0, Kl = 0.5, Vl = 0.0, 
             ϵ = 0.0, 
@@ -52,7 +52,7 @@ mutable struct SimModel
         Xb = Dict{Float64, Dict{Float64, Float64}}()
         vatp_range, vg_ranges = vatpvg_ranges(net, θvatp, vatp_idx, θvg, vg_idx)
         N = sum(length.(values(vg_ranges)))
-        Xi = X0/N
+        Xi = clamp(X0/N, num_min, num_max)
         for (vatpi, vatp) in enumerate(vatp_range)
             Xb[vatp] = Dict{Float64, Float64}()
             for vg in vg_ranges[vatpi]
@@ -63,11 +63,23 @@ mutable struct SimModel
         
         new(
             net, vatp_idx, vg_idx, vl_idx, obj_idx,
-            θvatp, θvg, Xmin, Xmax, D, 
+            θvatp, θvg, num_min, num_max, D, 
             cg, Kg, Vg, 
             cl, Kl, Vl, 
             ϵ, niters, damp,  
             sg0, sl0, X0, Xb
         )
     end
+end
+
+vatpvgN(M::SimModel) = sum(length.(values(M.Xb)))
+function lXgamma(M::SimModel)
+    mX, MX = Inf, -Inf
+    for (vatp, Xvatp) in M.Xb
+        for (vg, X) in Xvatp
+            (X > MX) && (MX = X)
+            (X < mX) && (mX = X)
+        end
+    end
+    return mX, MX
 end

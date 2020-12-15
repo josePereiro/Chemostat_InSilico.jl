@@ -14,9 +14,16 @@ using Base.Threads
 using BenchmarkTools
 
 ## ---------------------------------------------------------
-let
-    InLP.plot_res(fill(rand.(100), 4)...)
-end
+# let
+#     M = InLP.SimModel(;
+#             θvatp = 2, 
+#             θvg = 3
+#         )
+
+#     # InLP.plot_politope(M)
+#     InLP.plot_res(M, InLP.ResTS())
+# end
+
 ## ---------------------------------------------------------
 # Find X0
 let
@@ -30,7 +37,7 @@ let
             niters = Int(1e8),
             sg0 = 4.5,
             X0 = 0.3,
-            damp = 0.98,
+            damp = 0.0,
             D = 0.01
         )
         
@@ -55,7 +62,7 @@ let
 
             fname = InLP.mysavename(sim_name, "png"; it, M.D, M.damp)
             path = joinpath(InLP.CH3_FIGURES_DIR, fname)
-            p = InLP.plot_res(ts)
+            p = InLP.plot_res(M, ts)
             savefig(p, path)
 
         end
