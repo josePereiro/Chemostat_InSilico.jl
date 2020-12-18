@@ -1,3 +1,29 @@
+function similar_board(Xb, v0)
+    T = typeof(v0)
+    sXb = Dict{Float64, Dict{Float64, T}}()
+    for (vatp, lX) in Xb
+        slX = get!(sXb, vatp, Dict{Float64, T}())
+        for (vg, _) in lX
+            slX[vg] = v0
+        end
+    end
+    sXb
+end
+
+function complete_board!(Xb, i_vatp_range, vg_ranges, deflt)
+    T = eltype(values(Xb))
+    for (vatpi, vatp) in i_vatp_range
+        vg_range = vg_ranges[vatpi]
+        lXb = haskey(Xb, vatp) ? Xb[vatp] : (Xb[vatp] = T())
+        for vg in vg_range
+            !haskey(lXb, vg) && (lXb[vg] = deflt)
+        end
+    end
+    Xb
+end
+
+
+
 # Sim function
 function run_simulation!(M::SimModel; 
         at_iter = (it, M) -> nothing,
@@ -29,7 +55,8 @@ function run_simulation!(M::SimModel;
     vg_ub0, vl_ub0 = Inf, Inf
     vatpvgN, vatpN = 0.0, 0.0
     recompute_ranges_th = (10.0^(-M.θvg))/3
-    lastΔXb = Dict{Float64, Dict{Float64, Float64}}()
+    lastΔXb = similar_board(Xb, 0.0)
+    wage = similar_board(Xb, 0) # world age
     lastΔsg = 0.0
     lastΔsl = 0.0
     ittime_prom = 0.0
@@ -54,20 +81,32 @@ function run_simulation!(M::SimModel;
                 vg_ub0, vl_ub0 = M.net.ub[vg_idx], M.net.ub[vl_idx]
             end
 
+            ## ---------------------------------------------------------
+            # complete boards
+            if politope_changed
+                complete_board!(Xb, i_vatp_range, vg_ranges, num_min)
+                complete_board!(lastΔXb, i_vatp_range, vg_ranges, 0.0)
+                complete_board!(wage, i_vatp_range, vg_ranges, 0)
+            end
+
+            @assert sum(length.(values(Xb))) == sum(length.(values(lastΔXb)))
+            @assert sum(length.(values(Xb))) == sum(length.(values(wage)))
+            
+            ## ---------------------------------------------------------
             # vatp dependent
             z = zeros(vatpN)
             Σvg__X = zeros(vatpN)
 
-            for (vatpi, vatp) in i_vatp_range
+            @threads for (vatpi, vatp) in i_vatp_range
                 vg_range = vg_ranges[vatpi]
 
-                lXb = haskey(Xb, vatp) ? Xb[vatp] : (Xb[vatp] = Dict{Float64, Float64}())
-                llastΔXb = haskey(lastΔXb, vatp) ? lastΔXb[vatp] : (lastΔXb[vatp] = Dict{Float64, Float64}())
-                
+                lXb = Xb[vatp]
+                lwage = wage[vatp]
+
                 Σvg__Xi = 0.0
                 for vg in vg_range
-                    Σvg__Xi += haskey(lXb, vg) ? lXb[vg] : (lXb[vg] = num_min)
-                    haskey(llastΔXb, vg) ? llastΔXb[vg] : (llastΔXb[vg] = 0.0)
+                    Σvg__Xi += lXb[vg]
+                    lwage[vg] = it
                 end
                 Σvg__X[vatpi] = Σvg__Xi
 
@@ -103,18 +142,37 @@ function run_simulation!(M::SimModel;
             ## ---------------------------------------------------------
             # Update Xb (let unfeasible out)
             # vatp
-            # if politope_changed
-                # unfea_vatp = setdiff(keys(Xb), vatp_range)
-                # foreach((vatp) -> delete!(Xb, vatp), unfea_vatp)
-                
-                # # vg
-                # for (vatpi, vatp) in i_vatp_range
-                #     lXb = Xb[vatp]
-                #     unfea_vg = setdiff(keys(lXb), vg_ranges[vatpi])
-                #     foreach((vg) -> delete!(lXb, vg), unfea_vg)
-                # end
-            # end
-            M.X = sum(sum.(values.(values(Xb))))
+            if politope_changed
+
+                ## ---------------------------------------------------------
+                # Compute feasible and unfeasible total X
+                Xfea = 0.0
+                Xunfea = 0.0
+                for (vatp, lXb) in Xb
+                    lwage = wage[vatp]
+                    for (vg, lX) in lXb
+                        if lwage[vg] != it # unfeasible
+                            Xunfea += lX
+                            lXb[vg] = 0.0
+                        else
+                            Xfea += lX
+                        end
+                    end
+                end
+
+                ## ---------------------------------------------------------
+                # redistribute Xunfea (maintaining the distribution shape)
+                # ΔX = (X/Xfea)*Xunfea = X * Xunfea/Xfea
+                # Compute unfeasible
+                Xfac = Xunfea/ Xfea
+                for (vatp, lXb) in Xb
+                    lwage = wage[vatp]
+                    for (vg, lX) in lXb
+                        lXb[vg] += lX * Xfac
+                    end
+                end
+            end
+            M.X = sum(sum.(values.(values(Xb)))) # total X
 
             ## ---------------------------------------------------------
             # concs
@@ -147,8 +205,7 @@ function run_simulation!(M::SimModel;
 
             ## ---------------------------------------------------------
             # Update polytope
-            update_net!(M.net) 
-            foreach(update_net!, net_pool)
+            foreach(update_net!, [M.net; net_pool])
 
         end # t = @elapsed begin
 
