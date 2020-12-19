@@ -1,14 +1,34 @@
+function lims(marginf, s...)
+    m = minimum(minimum.(s))
+    M = maximum(maximum.(s))
+    gamma = abs(m - M)
+    gamma = gamma == 0 ? M : gamma
+    gamma = gamma == 0 ? marginf : gamma
+    margin = gamma * marginf
+    (m - margin, M + margin)
+end
+
 ## ---------------------------------------------------------
-function plot_res(M::SimModel, ts::ResTS; f = (x) -> x)
+function plot_res(M::SimModel, ts::ResTS; f = (x) -> x, marginf = 0.2)
+    
     p1 = plot(xlabel = "time", ylabel = "conc")
-    plot!(p1, f.(ts.sg_ts); label = "sg", lw = 3)
-    plot!(p1, f.(ts.sl_ts); label = "sl", lw = 3)
+    if !(isempty(ts.sg_ts) || isempty(ts.sl_ts))
+        ylim = lims(marginf, ts.sg_ts, ts.sl_ts)
+        plot!(p1, f.(ts.sg_ts); ylim, label = "sg", lw = 3)
+        plot!(p1, f.(ts.sl_ts); ylim, label = "sl", lw = 3)
+    end    
     
     p2 = plot(xlabel = "time", ylabel = "X")
-    plot!(p2, f.(ts.X_ts); label = "X", lw = 3)
-
+    if !isempty(ts.X_ts)
+        ylim = lims(marginf, ts.X_ts)
+        plot!(p2, f.(ts.X_ts); ylim, label = "X", lw = 3)
+    end    
+    
     p3 = plot(xlabel = "time", ylabel = "D")
-    plot!(p3, f.(ts.D_ts); label = "D", lw = 3)
+    if !isempty(ts.D_ts)
+        ylim = lims(marginf, ts.D_ts)
+        plot!(p3, f.(ts.D_ts); ylim, label = "D", lw = 3)
+    end
 
     p4 = plot_politope(M)
     
