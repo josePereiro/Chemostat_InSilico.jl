@@ -62,6 +62,7 @@ function run_simulation!(M::SimModel;
     lastΔsg = 0.0
     lastΔsl = 0.0
     ittime_prom = 0.0
+
     for it in 1:M.niters
 
         ittime = @elapsed begin
@@ -75,7 +76,7 @@ function run_simulation!(M::SimModel;
                                abs(M.net.ub[vl_idx] - vl_ub0) > recompute_ranges_th
 
             ## ---------------------------------------------------------
-            lazy_iter = !(politope_changed && force)
+            lazy_iter = !(politope_changed || force)
 
             ## ---------------------------------------------------------
             # ranges (recompute ranges if the polytope change)
@@ -85,7 +86,7 @@ function run_simulation!(M::SimModel;
                 vatpN = length(i_vatp_range)
                 vg_ub0, vl_ub0 = M.net.ub[vg_idx], M.net.ub[vl_idx]
             end
-
+            
             ## ---------------------------------------------------------
             # complete boards
             if !lazy_iter
@@ -173,7 +174,7 @@ function run_simulation!(M::SimModel;
                         lXb[vg] += lX * Xfac
                     end
                 end
-            end
+            end #if !lazy_iter
             M.X = sum(sum.(values.(values(Xb)))) # total X
 
             ## ---------------------------------------------------------
