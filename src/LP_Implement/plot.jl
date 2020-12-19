@@ -18,24 +18,18 @@ end
 
 function plot_politope(M::SimModel; 
         D = 250.0,
-        N = 1000
+        N = 3000
     )
     
     vatp_range, vg_ranges = vatpvg_ranges(M)
-    # i_vatp_range = collect(enumerate(vatp_range))
-    # vatpL, vatpU = minimum(vatp_range), maximum(vatp_range)
     vgL, vgU = minimum(first.(vg_ranges)), maximum(last.(vg_ranges))
     Δvg = step(first(vg_ranges))
     vg_range = vgL:Δvg:vgU
-    # V = (vatpU - vatpL) * (vgU - vgL)
-    # N = floor(Int, D * V)
     mX, MX = lXgamma(M)
 
     p = plot(xlabel = "vatp", ylabel = "vg")
     c = 0
-    # for i in 1:N
     while c < N
-        # vatpi, vatp = rand(i_vatp_range)
         vatp = rand(vatp_range)
         vg = rand(vg_range)
         !haskey(M.Xb, vatp) && continue
@@ -44,7 +38,7 @@ function plot_politope(M::SimModel;
         lX = M.Xb[vatp][vg]
         color = :black
         ms = 10.0 * lX/MX
-        scatter!(p, [vatp], [vg]; color, label = "", ms, alpha = 0.4)
+        scatter!(p, [vatp], [vg]; color, label = "", ms, alpha = 0.2)
         c += 1
     end
     p

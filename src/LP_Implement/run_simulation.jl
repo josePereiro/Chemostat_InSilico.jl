@@ -26,9 +26,10 @@ end
 
 # Sim function
 function run_simulation!(M::SimModel; 
-        at_iter = (it, M) -> nothing,
+        on_iter = (it, M) -> false,
         cache_marginf = 1,
-        verbose = true
+        verbose = true,
+        force = false
     )
 
     # cache
@@ -65,7 +66,7 @@ function run_simulation!(M::SimModel;
         ittime = @elapsed begin
 
             ## ---------------------------------------------------------
-            at_iter(it, M) # feed back
+            on_iter(it, M) && break # feed back
 
             ## ---------------------------------------------------------
             # Check if the polytope changed
@@ -74,7 +75,7 @@ function run_simulation!(M::SimModel;
 
             ## ---------------------------------------------------------
             # ranges (recompute ranges if the polytope change)
-            if politope_changed
+            if force || politope_changed
                 i_vatp_range, vatp_range, vg_ranges = ivatpvg_ranges(M, net_pool)
                 vatpvgN = sum(length.(values(vg_ranges))) # total regions
                 vatpN = length(i_vatp_range)
@@ -83,7 +84,7 @@ function run_simulation!(M::SimModel;
 
             ## ---------------------------------------------------------
             # complete boards
-            if politope_changed
+            if force || politope_changed
                 complete_board!(Xb, i_vatp_range, vg_ranges, num_min)
                 complete_board!(lastΔXb, i_vatp_range, vg_ranges, 0.0)
                 complete_board!(wage, i_vatp_range, vg_ranges, 0)
@@ -142,7 +143,7 @@ function run_simulation!(M::SimModel;
             ## ---------------------------------------------------------
             # Update Xb (let unfeasible out)
             # vatp
-            if politope_changed
+            if force || politope_changed
 
                 ## ---------------------------------------------------------
                 # Compute feasible and unfeasible total X

@@ -12,61 +12,118 @@ using Base.Threads
 using Dates
 using Base.Threads
 using BenchmarkTools
+using Statistics
 
 ## ---------------------------------------------------------
-# let
-#     M = InLP.SimModel(;
-#             θvatp = 2, 
-#             θvg = 3
-#         )
+# Tools
+sim_name(name) = string(name, "__", now())
+fig_dir(sname) = joinpath(InLP.CH3_FIGURES_DIR, sname)
+dat_dir(sname) = joinpath(InLP.CH3_DATA_DIR, sname)
+function make_dirs(sname)
+    fdir = fig_dir(sname)
+    ddir = dat_dir(sname)
+    mkpath.([fdir, ddir])
+end
 
-#     # InLP.plot_politope(M)
-#     InLP.plot_res(M, InLP.ResTS())
-# end
+function check_stst(ts; w = 1000, th = 0.05)
+    stst = true
+    @views for sym in [:X_ts, :sl_ts, :sg_ts, :D_ts]
+        s = getfield(ts, sym)
+        length(s) <= w && return false
+        vs = s[end - w:end]
+        m = abs(mean(vs))
+        m = m == 0 ? 1.0 : m
+        s = std(vs)
+        stst = stst && s/m < th
+    end
+    return stst
+end
+
+function push_plot_save(M, TS, it; 
+        sname, sim_params,
+        push_frec = 10,
+        savefig_frec = 100,
+        savedat_frec = 1000,
+        force = false
+    )
+
+    if it % push_frec == 0 || force
+        push!(TS, M)        
+    end
+
+    # save fig
+    save_fig = it == 1 || it % savefig_frec == 0 || it == M.niters || force
+    if save_fig
+
+        fname = InLP.mysavename(sname, "png"; it, sim_params...)
+        fpath = joinpath(fig_dir(sname), fname)
+        p = InLP.plot_res(M, TS)
+        savefig(p, fpath)
+
+    end
+
+    # save data
+    savedat_frec = it % savedat_frec == 0 || it == M.niters || force
+    if savedat_frec
+        fname = InLP.mysavename(sname, "jls"; sim_params...)
+        fpath = joinpath(dat_dir(sname), fname)
+        serialize(fpath, (;TS, M))
+    end
+end
 
 ## ---------------------------------------------------------
-# Find X0
-let
-
-    sim_name = "Ch3_$(now())"
-    @info "Doing" sim_name
-
-    M0 = InLP.SimModel(;
+# Common model
+M0 = InLP.SimModel(;
             θvatp = 2, 
             θvg = 3, 
-            niters = Int(1e8),
+            niters = Int(5e5),
             sg0 = 4.5,
             X0 = 0.3,
             damp = 0.0,
             D = 0.01
         )
-        
+## ---------------------------------------------------------
+# Find X0
+let
+
+    # setup
+    sname = sim_name("Ch3_")
+    make_dirs(sname)
+
+    @info "Doing" sname
+
     # cache
     InLP.vgvatp_cache(M0)
 
     # simulation
     M = deepcopy(M0)
-
+    TS = InLP.ResTS()
+    sim_params = (;M.D, M.damp)
     
-    # TODO: make a real chemostat. move D to get a given X
-    save_frec = 100
-    write_frec = 10
-    ts = InLP.ResTS()
-    function at_iter(it, M)
-        if (it % write_frec == 0)
-            push!(ts, M)
+    stst_th = 0.05
+    stst_window = 250
+    check_stst_frec = 500
+    savefig_frec = 100
+    savedat_frec = 1000
+    push_frec = 10
+
+    function on_iter(it, M)
+        
+        # stead state
+        stst = false
+        if it % check_stst_frec == 0
+            stst = check_stst(TS; w = stst_window, th = stst_th)
         end
 
-        # save fig
-        if (it == 1 || it % save_frec == 0 || it == M.niters)
+        # output
+        push_plot_save(M, TS, it; 
+            sname, sim_params,
+            push_frec, savefig_frec, savedat_frec,
+            force = stst
+        )
 
-            fname = InLP.mysavename(sim_name, "png"; it, M.D, M.damp)
-            path = joinpath(InLP.CH3_FIGURES_DIR, fname)
-            p = InLP.plot_res(M, ts)
-            savefig(p, path)
-
-        end
+        return stst
     end
-    InLP.run_simulation!(M; at_iter, verbose = true)
+    InLP.run_simulation!(M; on_iter, verbose = true, force = true)
 
 end
