@@ -40,7 +40,7 @@ function run_simulation!(M::SimModel;
     Xb =  M.Xb
     vatp_idx, vg_idx, vl_idx, obj_idx = M.vatp_idx, M.vg_idx, M.vl_idx, M.obj_idx
     Vg, Kg, Vl, Kl = M.Vg, M.Kg, M.Vl, M.Kl
-    damp, num_min, num_max = M.damp, M.num_min, M.num_max
+    damp0, damp1, num_min, num_max = M.damp, 1.0 - M.damp, M.num_min, M.num_max
     
     ## ---------------------------------------------------------
     # update model
@@ -50,11 +50,12 @@ function run_simulation!(M::SimModel;
     end
     update_net!(M.net) 
     net_pool = map((i) -> deepcopy(M.net), 1:nthreads())
+    all_nets = [M.net; net_pool]
 
-    verbose && (prog = Progress(M.niters; desc = "Simulating ... "))
+    verbose && (prog = Progress(M.niters; desc = "Simulating ... ", dt = 0.5))
     i_vatp_range, vatp_range, vg_ranges = nothing, nothing, nothing
     vg_ub0, vl_ub0 = Inf, Inf
-    vatpvgN, vatpN = 0.0, 0.0
+    vatpvgN, vatpN = 0, 0
     recompute_ranges_th = (10.0^(-M.θvg))/3
     lastΔXb = similar_board(Xb, 0.0)
     wage = similar_board(Xb, 0) # world age
@@ -74,8 +75,11 @@ function run_simulation!(M::SimModel;
                                abs(M.net.ub[vl_idx] - vl_ub0) > recompute_ranges_th
 
             ## ---------------------------------------------------------
+            lazy_iter = !(politope_changed && force)
+
+            ## ---------------------------------------------------------
             # ranges (recompute ranges if the polytope change)
-            if force || politope_changed
+            if !lazy_iter
                 i_vatp_range, vatp_range, vg_ranges = ivatpvg_ranges(M, net_pool)
                 vatpvgN = sum(length.(values(vg_ranges))) # total regions
                 vatpN = length(i_vatp_range)
@@ -84,15 +88,12 @@ function run_simulation!(M::SimModel;
 
             ## ---------------------------------------------------------
             # complete boards
-            if force || politope_changed
+            if !lazy_iter
                 complete_board!(Xb, i_vatp_range, vg_ranges, num_min)
                 complete_board!(lastΔXb, i_vatp_range, vg_ranges, 0.0)
                 complete_board!(wage, i_vatp_range, vg_ranges, 0)
             end
 
-            @assert sum(length.(values(Xb))) == sum(length.(values(lastΔXb)))
-            @assert sum(length.(values(Xb))) == sum(length.(values(wage)))
-            
             ## ---------------------------------------------------------
             # vatp dependent
             z = zeros(vatpN)
@@ -132,8 +133,8 @@ function run_simulation!(M::SimModel;
                     term3 = Xᵢ₋₁ * M.D
                     # update X
                     ΔX = term1 + term2 - term3
-                    # ΔX = clamp(ΔX, num_min, num_max)
-                    Xᵢ = (damp * Xᵢ₋₁) + (1.0 - damp) * (Xᵢ₋₁ + (ΔX + lastΔX)/2)
+                    Xᵢ = damp0 * Xᵢ₋₁ + damp1 * (Xᵢ₋₁ + (ΔX + lastΔX)/2)
+                    # Xᵢ = damp0 * Xᵢ₋₁ + damp1 * (Xᵢ₋₁ + ΔX)
                     lXb[vg] = clamp(Xᵢ, num_min, num_max)
                     llastΔXb[vg] = ΔX
                 end
@@ -143,7 +144,7 @@ function run_simulation!(M::SimModel;
             ## ---------------------------------------------------------
             # Update Xb (let unfeasible out)
             # vatp
-            if force || politope_changed
+            if !lazy_iter
 
                 ## ---------------------------------------------------------
                 # Compute feasible and unfeasible total X
@@ -195,18 +196,19 @@ function run_simulation!(M::SimModel;
 
             # update sg
             Δsg = -Σ_vatp_vg__vg_X + M.D * (M.cg - M.sg)
-            # Δsg = clamp(Δsg, num_min, num_max)
-            M.sg = max(0.0, damp * M.sg + (1.0 - damp) * (M.sg + (Δsg + lastΔsg)/2))
+            M.sg = max(0.0, damp0 * M.sg + damp1 * (M.sg + (Δsg + lastΔsg)/2))
+            # M.sg = max(0.0, damp0 * M.sg + damp1 * (M.sg + Δsg))
             lastΔsg = Δsg
+
             # update sl
             Δsl = -Σ_vatp_vg__vl_X + M.D * (M.cl - M.sl)
-            # Δsl = clamp(Δsl, num_min, num_max)
-            M.sl = max(0.0, damp * M.sl + (1.0 - damp) * (M.sl + (Δsl + lastΔsl)/2))
+            M.sl = max(0.0, damp0 * M.sl + damp1 * (M.sl + (Δsl + lastΔsl)/2))
+            # M.sl = max(0.0, damp0 * M.sl + damp1 * (M.sl + Δsl))
             lastΔsl = Δsl
 
             ## ---------------------------------------------------------
             # Update polytope
-            foreach(update_net!, [M.net; net_pool])
+            foreach(update_net!, all_nets)
 
         end # t = @elapsed begin
 
@@ -221,8 +223,10 @@ function run_simulation!(M::SimModel;
                 (:ittime, ittime),
                 (:ittime_prom, ittime_prom),
                 (:D, M.D),
-                (:damp, damp),
+                (:damp, damp0),
+                (:force, force),
                 (:politope_changed, politope_changed),
+                (:lazy_iter, lazy_iter),
                 (": ------ ", "------------------"),
                 (:X, M.X),
                 (:sg, M.sg),

@@ -32,7 +32,7 @@ mutable struct SimModel
     Xb::Dict{Float64, Dict{Float64, Float64}}
 
     function SimModel(;net = ToyModel(), θvatp = 2, θvg = 3, 
-            X0 = 0.22, num_min = 1e-30, num_max = 1e30, D = 1e-2, 
+            X0 = 0.22, num_min = -1e30, num_max = 1e30, D = 1e-2, 
             cg = 15.0, sg0 = 15.0, Kg = 0.5, Vg = 0.5, 
             cl = 0.0, sl0 = 0.0, Kl = 0.5, Vl = 0.0, 
             ϵ = 0.0, 
@@ -44,21 +44,23 @@ mutable struct SimModel
             obj_ider = "biom"
         )
 
+        # indexes
         vatp_idx = rxnindex(net, vatp_ider)
         vg_idx = rxnindex(net, vg_ider)
         vl_idx = rxnindex(net, vl_ider)
         obj_idx = rxnindex(net, obj_ider)
 
+        # update net
+        net.ub[vg_idx] = max(net.lb[vg_idx], (Vg * sg0) / (Kg + sg0))
+        net.ub[vl_idx] = max(net.lb[vl_idx], (Vl * sl0) / (Kl + sl0))
+
+        # board
         Xb = Dict{Float64, Dict{Float64, Float64}}()
         vatp_range, vg_ranges = vatpvg_ranges(net, θvatp, vatp_idx, θvg, vg_idx)
+        i_vatp_range = enumerate(vatp_range)
         N = sum(length.(values(vg_ranges)))
-        Xi = clamp(X0/N, num_min, num_max)
-        for (vatpi, vatp) in enumerate(vatp_range)
-            Xb[vatp] = Dict{Float64, Float64}()
-            for vg in vg_ranges[vatpi]
-                Xb[vatp][vg] = Xi
-            end
-        end
+        Xi = clamp(X0/N, 0.0, num_max)
+        complete_board!(Xb, i_vatp_range, vg_ranges, Xi)
         X_ts = [X0]
         
         new(
@@ -73,6 +75,7 @@ mutable struct SimModel
 end
 
 vatpvgN(M::SimModel) = sum(length.(values(M.Xb)))
+
 function lXgamma(M::SimModel)
     mX, MX = Inf, -Inf
     for (vatp, Xvatp) in M.Xb
