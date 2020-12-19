@@ -52,10 +52,9 @@ function push_plot_save(M, TS, it;
     end
 
     # save fig
-    save_fig = it == 1 || it % savefig_frec == 0 || it == M.niters || force
+    save_fig = it == 1 || rem(it, savefig_frec) == 0 || it == M.niters || force
     if save_fig
-
-        fname = InLP.mysavename(sname, "png"; it, sim_params...)
+        fname = InLP.mysavename("fig", "png"; it, sim_params...)
         fpath = joinpath(fig_dir(sname), fname)
         p = InLP.plot_res(M, TS)
         savefig(p, fpath)
@@ -63,9 +62,9 @@ function push_plot_save(M, TS, it;
     end
 
     # save data
-    savedat_frec = it % savedat_frec == 0 || it == M.niters || force
+    savedat_frec = rem(it, savedat_frec) == 0 || it == M.niters || force
     if savedat_frec
-        fname = InLP.mysavename(sname, "jls"; sim_params...)
+        fname = InLP.mysavename("dat", "jls"; sim_params...)
         fpath = joinpath(dat_dir(sname), fname)
         serialize(fpath, (;TS, M))
     end
@@ -76,14 +75,15 @@ end
 M0 = InLP.SimModel(;
             θvatp = 2, 
             θvg = 3, 
-            niters = Int(5e5),
-            sg0 = 4.5,
+            niters = Int(1e8),
             X0 = 0.3,
+            sg0 = 0.15,
+            sl0 = 2.0,
             damp = 0.0,
-            D = 0.01
+            Δt = 0.5,
+            # D = 0.01
         )
 ## ---------------------------------------------------------
-# Find X0
 let
 
     # setup
@@ -103,27 +103,49 @@ let
     stst_th = 0.05
     stst_window = 250
     check_stst_frec = 500
-    savefig_frec = 100
+    savefig_frec = 500
     savedat_frec = 1000
     push_frec = 10
+    dead_th = 1e-2
+
+    Ds = collect(1e-2:5e-3:3e-2)
+    Ds = [Ds; reverse(Ds)] |> unique
+    M.D = popfirst!(Ds)
 
     function on_iter(it, M)
-        
+
         # stead state
         stst = false
-        if it % check_stst_frec == 0
+        if rem(it, check_stst_frec) == 0
             stst = check_stst(TS; w = stst_window, th = stst_th)
         end
+        
+        # save stst
+        if stst
+            fname = InLP.mysavename("stst_dat", "jls"; it, sim_params...)
+            fpath = joinpath(dat_dir(sname), fname)
+            serialize(fpath, (;it, M))
+        end
+
+        # cells die
+        dead = M.X < dead_th
+
+        # change D
+        Ds_empty = isempty(Ds) 
+        stst && !Ds_empty && (M.D = popfirst!(Ds))
+
+        # finish
+        finish = stst && (dead || Ds_empty)
 
         # output
         push_plot_save(M, TS, it; 
             sname, sim_params,
             push_frec, savefig_frec, savedat_frec,
-            force = stst
+            force = finish
         )
 
-        return stst
+        return finish
     end
-    InLP.run_simulation!(M; on_iter, verbose = true, force = true)
+    InLP.run_simulation!(M; on_iter, verbose = true, force = false)
 
 end

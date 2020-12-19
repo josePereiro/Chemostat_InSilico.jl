@@ -6,6 +6,8 @@ mutable struct SimModel
     vl_idx::Int
     obj_idx::Int
 
+    Δt::Float64
+
     # Sim params
     θvatp::Int               # exactness of vatp discretization dvatp = 10.0^-(θvatp)
     θvg::Int                 # exactness of vg discretization dvatp = 10.0^-(θvg)
@@ -31,7 +33,7 @@ mutable struct SimModel
     X::Float64
     Xb::Dict{Float64, Dict{Float64, Float64}}
 
-    function SimModel(;net = ToyModel(), θvatp = 2, θvg = 3, 
+    function SimModel(;net = ToyModel(), θvatp = 2, θvg = 3, Δt = 0.1,
             X0 = 0.22, num_min = -1e30, num_max = 1e30, D = 1e-2, 
             cg = 15.0, sg0 = 15.0, Kg = 0.5, Vg = 0.5, 
             cl = 0.0, sl0 = 0.0, Kl = 0.5, Vl = 0.0, 
@@ -64,7 +66,8 @@ mutable struct SimModel
         X_ts = [X0]
         
         new(
-            net, vatp_idx, vg_idx, vl_idx, obj_idx,
+            net, vatp_idx, vg_idx, vl_idx, obj_idx, 
+            Δt, 
             θvatp, θvg, num_min, num_max, D, 
             cg, Kg, Vg, 
             cl, Kl, Vl, 
@@ -74,7 +77,8 @@ mutable struct SimModel
     end
 end
 
-vatpvgN(M::SimModel) = sum(length.(values(M.Xb)))
+vatpvgN(Xb) = sum(length.(values(Xb)))
+vatpvgN(M::SimModel) = vatpvgN(M.Xb)
 
 function lXgamma(M::SimModel)
     mX, MX = Inf, -Inf

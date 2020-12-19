@@ -20,6 +20,7 @@ include("ResTS.jl")
 include("range.jl")
 include("plot.jl")
 include("cache.jl")
+include("board_utils.jl")
 include("run_simulation.jl")
 
 end
