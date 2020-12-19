@@ -76,8 +76,8 @@ M0 = InLP.SimModel(;
             θvatp = 2, 
             θvg = 3, 
             niters = Int(1e8),
-            X0 = 0.3,
-            sg0 = 0.15,
+            X0 = 1.5,
+            sg0 = 15.0,
             sl0 = 2.0,
             damp = 0.0,
             Δt = 0.5,
@@ -108,7 +108,8 @@ let
     push_frec = 10
     dead_th = 1e-2
 
-    Ds = collect(1e-2:5e-3:3e-2)
+    # Ds = collect(1e-2:5e-3:3e-2)
+    Ds = [0.02]
     Ds = [Ds; reverse(Ds)] |> unique
     M.D = popfirst!(Ds)
 
@@ -135,7 +136,7 @@ let
         stst && !Ds_empty && (M.D = popfirst!(Ds))
 
         # finish
-        finish = stst && (dead || Ds_empty)
+        finish = dead || (stst && Ds_empty)
 
         # output
         push_plot_save(M, TS, it; 
