@@ -62,9 +62,9 @@ function push_plot_save(M, TS, it;
     end
 
     # save data
-    savedat_frec = rem(it, savedat_frec) == 0 || it == M.niters || force
-    if savedat_frec
-        fname = InLP.mysavename("dat", "jls"; sim_params...)
+    save_dat = rem(it, savedat_frec) == 0 || it == M.niters || force
+    if save_dat
+        fname = InLP.mysavename("tot_dat", "jls"; sim_params...)
         fpath = joinpath(dat_dir(sname), fname)
         serialize(fpath, (;TS, M))
     end
@@ -75,13 +75,13 @@ end
 M0 = InLP.SimModel(;
             θvatp = 2, 
             θvg = 3, 
-            niters = Int(1e8),
+            niters = Int(1e4),
             X0 = 1.5,
             sg0 = 15.0,
             sl0 = 2.0,
             damp = 0.0,
             Δt = 0.5,
-            # D = 0.01
+            ϵ = 0.2
         )
 ## ---------------------------------------------------------
 let
@@ -95,11 +95,7 @@ let
     # cache
     InLP.vgvatp_cache(M0)
 
-    # simulation
-    M = deepcopy(M0)
-    TS = InLP.ResTS()
-    sim_params = (;M.D, M.damp)
-    
+    # simulation params
     stst_th = 0.05
     stst_window = 250
     check_stst_frec = 500
@@ -108,45 +104,50 @@ let
     push_frec = 10
     dead_th = 1e-2
 
-    # Ds = collect(1e-2:5e-3:3e-2)
-    Ds = [0.02]
-    Ds = [Ds; reverse(Ds)] |> unique
-    M.D = popfirst!(Ds)
+    Ds = collect(0.000:0.005:0.1) |> sort
+    # Ds = [Ds; reverse(Ds)] |> unique
+    for D in Ds
+        M = deepcopy(M0)
+        TS = InLP.ResTS()
+        M.D = D
 
-    function on_iter(it, M)
+        function on_iter(it, M)
 
-        # stead state
-        stst = false
-        if rem(it, check_stst_frec) == 0
-            stst = check_stst(TS; w = stst_window, th = stst_th)
+            sim_params = (;M.D, M.ϵ, M.Δt)
+
+            # stead state
+            stst = false
+            if rem(it, check_stst_frec) == 0
+                stst = check_stst(TS; w = stst_window, th = stst_th)
+            end
+            
+            # save stst
+            # if stst
+            #     fname = InLP.mysavename("stst_dat", "jls"; it, sim_params...)
+            #     fpath = joinpath(dat_dir(sname), fname)
+            #     serialize(fpath, (;it, M))
+            # end
+
+            # cells die
+            dead = M.X < dead_th
+
+            # change D
+            # Ds_empty = isempty(Ds) 
+            # stst && !Ds_empty && (M.D = popfirst!(Ds))
+
+            # finish
+            # finish = dead || (stst && Ds_empty)
+            finish = dead || stst
+
+            # output
+            push_plot_save(M, TS, it; 
+                sname, sim_params,
+                push_frec, savefig_frec, savedat_frec,
+                force = finish
+            )
+
+            return finish
         end
-        
-        # save stst
-        if stst
-            fname = InLP.mysavename("stst_dat", "jls"; it, sim_params...)
-            fpath = joinpath(dat_dir(sname), fname)
-            serialize(fpath, (;it, M))
-        end
-
-        # cells die
-        dead = M.X < dead_th
-
-        # change D
-        Ds_empty = isempty(Ds) 
-        stst && !Ds_empty && (M.D = popfirst!(Ds))
-
-        # finish
-        finish = dead || (stst && Ds_empty)
-
-        # output
-        push_plot_save(M, TS, it; 
-            sname, sim_params,
-            push_frec, savefig_frec, savedat_frec,
-            force = finish
-        )
-
-        return finish
+        InLP.run_simulation!(M; on_iter, verbose = true, force = false)
     end
-    InLP.run_simulation!(M; on_iter, verbose = true, force = false)
-
 end
