@@ -17,17 +17,27 @@ function vgvatp_cache(M::SimModel; marginf::Int = 50)::Dict{Float64, Dict{Float6
     # Open network
     M = deepcopy(M)
 
+    wl = ReentrantLock() # write lock
+
     # ranges
     vatp_range, vg_ranges = vatpvg_ranges(M; vatp_margin, vg_margin)
-    N = sum(length.(values(vg_ranges)))
+    i_vatp_range = vatp_range |> enumerate |> collect
+    Nvatpvg = sum(length.(values(vg_ranges)))
+    Nvatp = length(vatp_range)
 
     # Caching
     cache = Dict{Float64, Dict{Float64, Vector{Float64}}}()
-    prog = Progress(N; desc = "Caching (N = $N)  ... ", dt = 0.5)
+    prog = Progress(Nvatp; desc = "Caching (N = $Nvatpvg)  ... ", dt = 0.5)
     c = 0
-    for (vatpi, vatp) in enumerate(vatp_range)
+    @threads for (vatpi, vatp) in i_vatp_range
+
         lnet = deepcopy(M.net)
-        cache[vatp] = Dict{Float64, Vector{Float64}}()
+
+        lock(wl) do
+            cache[vatp] = Dict{Float64, Vector{Float64}}()
+            c += 1
+        end
+
         vg_range = vg_ranges[vatpi]
         for vg in vg_range
             fixxing(lnet, M.vatp_idx, vatp) do 
@@ -36,7 +46,6 @@ function vgvatp_cache(M::SimModel; marginf::Int = 50)::Dict{Float64, Dict{Float6
                     cache[vatp][vg] = sol            
                 end
             end
-            c += 1
         end
         update!(prog, c; showvalues = [
                     (:vatp_range, string(vatp_range, " len: ", length(vatp_range))),
