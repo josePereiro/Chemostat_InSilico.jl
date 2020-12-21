@@ -3,6 +3,7 @@ function run_simulation!(M::SimModel;
         on_iter = (it, M) -> false,
         cache_marginf = 1,
         verbose = true,
+        verbose_frec = 10,
         force = false,
         force_frac = 100
     )
@@ -11,12 +12,11 @@ function run_simulation!(M::SimModel;
     cache = vgvatp_cache(M; marginf = cache_marginf)
 
     ## ---------------------------------------------------------
-    # extract model
+    # extract model constants
     Xb =  M.Xb
     vatp_idx, vg_idx, vl_idx, obj_idx = M.vatp_idx, M.vg_idx, M.vl_idx, M.obj_idx
     Vg, Kg, Vl, Kl = M.Vg, M.Kg, M.Vl, M.Kl
-    damp0, damp1, num_min, num_max = M.damp, 1.0 - M.damp, M.num_min, M.num_max
-    Δt = M.Δt
+    δ, τ, Δt = M.δ, M.τ, M.Δt
     
     ## ---------------------------------------------------------
     # update model
@@ -33,10 +33,7 @@ function run_simulation!(M::SimModel;
     vg_ub0, vl_ub0 = Inf, Inf
     vatpvgN, vatpN = 0, 0
     recompute_ranges_th = (10.0^(-M.θvg))/3
-    # lastΔXb = similar_board(Xb, 0.0)
     wage = similar_board(Xb, 0) # world age
-    # lastΔsg = 0.0
-    # lastΔsl = 0.0
     ittime_prom = 0.0
 
     for it in 1:M.niters
@@ -67,7 +64,6 @@ function run_simulation!(M::SimModel;
             # complete boards
             if !lazy_iter
                 complete_board!(Xb, i_vatp_range, vg_ranges, 0.0)
-                # complete_board!(lastΔXb, i_vatp_range, vg_ranges, 0.0)
                 complete_board!(wage, i_vatp_range, vg_ranges, 0)
             end
 
@@ -94,29 +90,25 @@ function run_simulation!(M::SimModel;
             end
 
             Σ_vatp_vg__z_X = sum(z[vatpi] * Σvg__X[vatpi] for (vatpi, vatp) in i_vatp_range)
-            term2 = M.ϵ * (Σ_vatp_vg__z_X) / vatpvgN
+            term2 = M.ϵ * (Σ_vatp_vg__z_X) / vatpvgN # global average
 
             @threads for (vatpi, vatp) in i_vatp_range
                 vg_range = vg_ranges[vatpi]
                 
                 vgN = length(vg_range)
-                term1 = (1 - M.ϵ) * (z[vatpi]* Σvg__X[vatpi]) / vgN
+                term1 = (1 - M.ϵ) * (z[vatpi]* Σvg__X[vatpi]) / vgN # local average
                 
                 lXb = Xb[vatp]
-                # llastΔXb = lastΔXb[vatp]
+                term1_term2 = term1 + term2
+
                 for vg in vg_range
                     Xᵢ₋₁ = lXb[vg]
-                    term3 = Xᵢ₋₁ * M.D
+                    term3 = Xᵢ₋₁ * (M.D + τ * M.sl + δ) # cellular dead/loose
 
                     # update X
-                    ΔX = (term1 + term2 - term3) * Δt
-                    # lastΔX = it == 1 ? ΔX : llastΔXb[vg]
-                    # Xᵢ = damp0 * Xᵢ₋₁ + damp1 * (Xᵢ₋₁ + (ΔX + lastΔX)/2)
-                    # Xᵢ = Xᵢ₋₁ + (ΔX + lastΔX)/2
+                    ΔX = (term1_term2 - term3) * Δt
                     Xᵢ = Xᵢ₋₁ + ΔX
-                    # Xᵢ = damp0 * Xᵢ₋₁ + damp1 * (Xᵢ₋₁ + ΔX)
                     lXb[vg] = max(0.0, Xᵢ)
-                    # llastΔXb[vg] = ΔX
                 end
             end
             # end
@@ -176,21 +168,11 @@ function run_simulation!(M::SimModel;
 
             # update sg
             Δsg = (-Σ_vatp_vg__vg_X + M.D * (M.cg - M.sg)) * Δt
-            # lastΔsg = it == 1 ? Δsg : lastΔsg
-            # M.sg = max(0.0, damp0 * M.sg + damp1 * (M.sg + (Δsg + lastΔsg)/2))
-            # M.sg = max(0.0, M.sg + (Δsg + lastΔsg)/2)
             M.sg = max(0.0, M.sg + Δsg)
-            # M.sg = max(0.0, damp0 * M.sg + damp1 * (M.sg + Δsg))
-            # lastΔsg = Δsg
 
             # update sl
             Δsl = (-Σ_vatp_vg__vl_X + M.D * (M.cl - M.sl)) * Δt
-            # lastΔsl = it == 1 ? Δsl : lastΔsl
-            # M.sl = max(0.0, damp0 * M.sl + damp1 * (M.sl + (Δsl + lastΔsl)/2))
-            # M.sl = max(0.0, M.sl + (Δsl + lastΔsl)/2)
             M.sl = max(0.0, M.sl + Δsl)
-            # M.sl = max(0.0, damp0 * M.sl + damp1 * (M.sl + Δsl))
-            # lastΔsl = Δsl
 
             ## ---------------------------------------------------------
             # Update polytope
@@ -199,18 +181,14 @@ function run_simulation!(M::SimModel;
         end # t = @elapsed begin
 
         ## ---------------------------------------------------------
-        ittime_prom = (ittime_prom * (it - 1) + ittime)/ it
-
-        ## ---------------------------------------------------------
         # Verbose
-        verbose && update!(prog, it; 
+        up = verbose && rem(it, verbose_frec) == 0
+        up && update!(prog, it; 
             showvalues = [
                 (:it, it),
                 (:ittime, ittime),
-                (:ittime_prom, ittime_prom),
                 (:D, M.D),
                 (:Δt, Δt),
-                (:damp, damp0),
                 (:force, force),
                 (:politope_changed, politope_changed),
                 (:lazy_iter, lazy_iter),

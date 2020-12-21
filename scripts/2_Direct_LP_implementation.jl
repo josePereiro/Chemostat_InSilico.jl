@@ -16,7 +16,7 @@ using Statistics
 
 ## ---------------------------------------------------------
 # Tools
-sim_name(name) = string(name, "__", now())
+sim_name(name; sim_params...) = string(InLP.mysavename(name, ""; sim_params...), "__", now())
 fig_dir(sname) = joinpath(InLP.CH3_FIGURES_DIR, sname)
 dat_dir(sname) = joinpath(InLP.CH3_DATA_DIR, sname)
 function make_dirs(sname)
@@ -26,7 +26,6 @@ function make_dirs(sname)
 end
 
 function check_stst(ts; w = 1000, th = 0.05)
-    stst = true
     @views for sym in [:X_ts, :sl_ts, :sg_ts, :D_ts]
         s = getfield(ts, sym)
         length(s) <= w && return false
@@ -34,9 +33,9 @@ function check_stst(ts; w = 1000, th = 0.05)
         m = abs(mean(vs))
         m = m == 0 ? 1.0 : m
         s = std(vs)
-        stst = stst && s/m < th
+        s/m > th && return false
     end
-    return stst
+    return true
 end
 
 function push_plot_save(M, TS, it; 
@@ -79,15 +78,15 @@ M0 = InLP.SimModel(;
             X0 = 1.5,
             sg0 = 15.0,
             sl0 = 2.0,
-            damp = 0.0,
             Δt = 0.5,
             ϵ = 0.5
         )
+
 ## ---------------------------------------------------------
 let
 
     # setup
-    sname = sim_name("Ch3_")
+    sname = sim_name("LP_Implementation")
     make_dirs(sname)
 
     @info "Doing" sname
@@ -99,21 +98,23 @@ let
     stst_th = 0.05
     stst_window = 250
     check_stst_frec = 1000
-    savefig_frec = 500
+    savefig_frec = 1000
     savedat_frec = 1000
     push_frec = 10
     dead_th = 1e-2
 
-    Ds = collect(0.001:0.001:0.1) |> sort
-    # Ds = [Ds; reverse(Ds)] |> unique
-    for D in Ds
+    ϵs = collect(0.1:0.1:1.0) |> sort
+    Ds = 10.0.^-(1.6:0.07:2.2) |> sort
+    for D in Ds, ϵ in ϵs
+
         M = deepcopy(M0)
         TS = InLP.ResTS()
         M.D = D
+        M.ϵ = ϵ
 
         function on_iter(it, M)
 
-            sim_params = (;M.D, M.ϵ, M.Δt)
+            sim_params = (;M.D, M.ϵ, M.Δt, M.δ, M.τ, M.cg)
 
             # stead state
             stst = false
@@ -121,22 +122,10 @@ let
                 stst = check_stst(TS; w = stst_window, th = stst_th)
             end
             
-            # save stst
-            # if stst
-            #     fname = InLP.mysavename("stst_dat", "jls"; it, sim_params...)
-            #     fpath = joinpath(dat_dir(sname), fname)
-            #     serialize(fpath, (;it, M))
-            # end
-
             # cells die
             dead = M.X < dead_th
 
-            # change D
-            # Ds_empty = isempty(Ds) 
-            # stst && !Ds_empty && (M.D = popfirst!(Ds))
-
             # finish
-            # finish = dead || (stst && Ds_empty)
             finish = dead || stst || it == M.niters
 
             # output
