@@ -7,17 +7,19 @@ cache_file(M::SimModel, marginf) = joinpath(CACHE_DIR,
 # TODO: Runge-Kutta damping
 function vgvatp_cache(M::SimModel; marginf::Int = 50)::Dict{Float64, Dict{Float64, Vector{Float64}}}
 
+    # setup
     vatp_margin = abs(marginf * (10.0^(-M.θvatp)))
     vg_margin = abs(marginf * (10.0^(-M.θvg)))
+    M = deepcopy(M)
 
     # check cache
     cfile = cache_file(M, marginf)
     isfile(cfile) && return deserialize(cfile)
-
-    # Open network
-    M = deepcopy(M)
-
+    
+    # threading
+    nth = nthreads()
     wl = ReentrantLock() # write lock
+    net_pool = [deepcopy(M.net) for th in 1:nth]
 
     # ranges
     vatp_range, vg_ranges = vatpvg_ranges(M; vatp_margin, vg_margin)
@@ -31,7 +33,8 @@ function vgvatp_cache(M::SimModel; marginf::Int = 50)::Dict{Float64, Dict{Float6
     c = 0
     @threads for (vatpi, vatp) in i_vatp_range
 
-        lnet = deepcopy(M.net)
+        thid = threadid()
+        net = net_pool[thid]
 
         lock(wl) do
             cache[vatp] = Dict{Float64, Vector{Float64}}()
@@ -40,9 +43,9 @@ function vgvatp_cache(M::SimModel; marginf::Int = 50)::Dict{Float64, Dict{Float6
 
         vg_range = vg_ranges[vatpi]
         for vg in vg_range
-            fixxing(lnet, M.vatp_idx, vatp) do 
-                fixxing(lnet, M.vg_idx, vg) do 
-                    sol = fba(lnet, M.obj_idx)
+            fixxing(net, M.vatp_idx, vatp) do 
+                fixxing(net, M.vg_idx, vg) do 
+                    sol = fba(net, M.obj_idx)
                     cache[vatp][vg] = sol            
                 end
             end
