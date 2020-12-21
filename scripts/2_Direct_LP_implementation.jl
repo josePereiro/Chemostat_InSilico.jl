@@ -77,9 +77,8 @@ M0 = InLP.SimModel(;
             niters = Int(5e4),
             X0 = 1.5,
             sg0 = 15.0,
-            sl0 = 2.0,
+            sl0 = 0.0,
             Δt = 0.5,
-            ϵ = 0.5
         )
 
 ## ---------------------------------------------------------
@@ -104,8 +103,10 @@ let
     dead_th = 1e-2
 
     ϵs = collect(0.1:0.1:1.0) |> sort
-    Ds = 10.0.^-(1.6:0.07:2.2) |> sort
-    for D in Ds, ϵ in ϵs
+    Ds = [0.0, 10.0.^-(1.6:0.07:2.2)] |> sort
+    Vls = [0.0, 0.1] |> sort
+    
+    for D in Ds, ϵ in ϵs, Vl in Vls
 
         M = deepcopy(M0)
         TS = InLP.ResTS()
@@ -114,7 +115,7 @@ let
 
         function on_iter(it, M)
 
-            sim_params = (;M.D, M.ϵ, M.Δt, M.δ, M.τ, M.cg)
+            sim_params = (;M.D, M.ϵ, M.Δt, M.δ, M.τ, M.cg, M.Vl)
 
             # stead state
             stst = false
