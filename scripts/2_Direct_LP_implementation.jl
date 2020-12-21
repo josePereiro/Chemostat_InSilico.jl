@@ -101,7 +101,7 @@ let
     dead_th = 1e-2
 
     ϵs = collect(0.1:0.1:1.0) |> sort
-    Ds = [0.0, 10.0.^-(1.6:0.07:2.2)] |> sort
+    Ds = [0.0; 10.0.^-(1.6:0.07:2.2)] |> sort
     Vls = [0.0, 0.1] |> sort
     
     for D in Ds, ϵ in ϵs, Vl in Vls

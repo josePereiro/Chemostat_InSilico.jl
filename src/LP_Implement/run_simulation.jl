@@ -1,7 +1,7 @@
 # Sim function
 function run_simulation!(M::SimModel; 
         on_iter = (it, M) -> false,
-        cache_marginf = 1,
+        cache_marginf = 50,
         verbose = true,
         verbose_frec = 10,
         force = false,

@@ -16,7 +16,6 @@ function vgvatp_cache(M::SimModel; marginf::Int = 50)::Dict{Float64, Dict{Float6
 
     # Open network
     M = deepcopy(M)
-    net = M.net
 
     # ranges
     vatp_range, vg_ranges = vatpvg_ranges(M; vatp_margin, vg_margin)
@@ -26,10 +25,10 @@ function vgvatp_cache(M::SimModel; marginf::Int = 50)::Dict{Float64, Dict{Float6
     cache = Dict{Float64, Dict{Float64, Vector{Float64}}}()
     prog = Progress(N; desc = "Caching (N = $N)  ... ", dt = 0.5)
     c = 0
-    for vatp in vatp_range
-        lnet = deepcopy(net)
+    for (vatpi, vatp) in enumerate(vatp_range)
+        lnet = deepcopy(M.net)
         cache[vatp] = Dict{Float64, Vector{Float64}}()
-        vg_range = vg_ranges[vatp]
+        vg_range = vg_ranges[vatpi]
         for vg in vg_range
             fixxing(lnet, M.vatp_idx, vatp) do 
                 fixxing(lnet, M.vg_idx, vg) do 
