@@ -8,6 +8,9 @@ const InU = Chemostat_InSilico.Utilities
 
 using ProgressMeter
 using Plots
+import GR
+GR.inline("png")
+
 using Serialization
 using Base.Threads
 using Dates

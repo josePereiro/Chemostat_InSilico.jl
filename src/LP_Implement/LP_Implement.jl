@@ -7,6 +7,8 @@ import ..Chemostat_InSilico.Utilities: mysavename, get_chuncks
 import ProgressMeter: Progress, update!, next!, finish!
 import Serialization: serialize, deserialize
 using Plots
+import GR
+GR.inline("png")
 using Base.Threads
 
 export MAX_SENSE, MIN_SENSE, fba, fva
