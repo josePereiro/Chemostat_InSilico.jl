@@ -38,7 +38,8 @@ end
 
 function plot_politope(M::SimModel; 
         D = 250.0,
-        N = 3000
+        hits_count = 3000,
+        maxiters = 100 * hits_count,
     )
     
     vatp_range, vg_ranges = vatpvg_ranges(M)
@@ -48,8 +49,10 @@ function plot_politope(M::SimModel;
     mX, MX = lXgamma(M)
 
     p = plot(xlabel = "vatp", ylabel = "vg")
-    c = 0
-    while c < N
+    hits = 0
+    iters = 0
+    while hits < hits_count && iters < maxiters
+        iters += 1
         vatp = rand(vatp_range)
         vg = rand(vg_range)
         !haskey(M.Xb, vatp) && continue
@@ -59,7 +62,7 @@ function plot_politope(M::SimModel;
         color = :black
         ms = 10.0 * lX/MX
         scatter!(p, [vatp], [vg]; color, label = "", ms, alpha = 0.2)
-        c += 1
+        hits += 1
     end
     p
 end

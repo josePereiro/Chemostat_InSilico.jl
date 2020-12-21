@@ -75,13 +75,13 @@ end
 M0 = InLP.SimModel(;
             θvatp = 2, 
             θvg = 3, 
-            niters = Int(1e4),
+            niters = Int(5e4),
             X0 = 1.5,
             sg0 = 15.0,
             sl0 = 2.0,
             damp = 0.0,
             Δt = 0.5,
-            ϵ = 0.2
+            ϵ = 0.5
         )
 ## ---------------------------------------------------------
 let
@@ -98,13 +98,13 @@ let
     # simulation params
     stst_th = 0.05
     stst_window = 250
-    check_stst_frec = 500
+    check_stst_frec = 1000
     savefig_frec = 500
     savedat_frec = 1000
     push_frec = 10
     dead_th = 1e-2
 
-    Ds = collect(0.000:0.005:0.1) |> sort
+    Ds = collect(0.001:0.001:0.1) |> sort
     # Ds = [Ds; reverse(Ds)] |> unique
     for D in Ds
         M = deepcopy(M0)
@@ -137,7 +137,7 @@ let
 
             # finish
             # finish = dead || (stst && Ds_empty)
-            finish = dead || stst
+            finish = dead || stst || it == M.niters
 
             # output
             push_plot_save(M, TS, it; 
