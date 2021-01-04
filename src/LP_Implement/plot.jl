@@ -8,27 +8,30 @@ function lims(marginf, s...)
     (m - margin, M + margin)
 end
 
-## ---------------------------------------------------------
+## ----------------------------------------------------------------------------
 function plot_res(M::SimModel, ts::ResTS; f = (x) -> x, marginf = 0.2)
     
-    p1 = plot(xlabel = "time", ylabel = "conc")
-    if !(isempty(ts.sg_ts) || isempty(ts.sl_ts))
-        ylim = lims(marginf, ts.sg_ts, ts.sl_ts)
-        plot!(p1, f.(ts.sg_ts); ylim, label = "sg", lw = 3)
-        plot!(p1, f.(ts.sl_ts); ylim, label = "sl", lw = 3)
-    end    
+    # p1 = plot(xlabel = "time", ylabel = "conc")
+    # if !(isempty(ts.sg_ts) || isempty(ts.sl_ts))
+    #     ylim = lims(marginf, ts.sg_ts, ts.sl_ts)
+    #     plot!(p1, f.(ts.sg_ts); ylim, label = "sg", lw = 3)
+    #     plot!(p1, f.(ts.sl_ts); ylim, label = "sl", lw = 3)
+    # end
+    p1 = plot_ts_concs(ts; f, marginf)    
     
-    p2 = plot(xlabel = "time", ylabel = "X")
-    if !isempty(ts.X_ts)
-        ylim = lims(marginf, ts.X_ts)
-        plot!(p2, f.(ts.X_ts); ylim, label = "X", lw = 3)
-    end    
+    # p2 = plot(xlabel = "time", ylabel = "X")
+    # if !isempty(ts.X_ts)
+    #     ylim = lims(marginf, ts.X_ts)
+    #     plot!(p2, f.(ts.X_ts); ylim, label = "X", lw = 3)
+    # end    
+    p2 = plot_ts_D(ts; f, marginf)    
     
-    p3 = plot(xlabel = "time", ylabel = "D")
-    if !isempty(ts.D_ts)
-        ylim = lims(marginf, ts.D_ts)
-        plot!(p3, f.(ts.D_ts); ylim, label = "D", lw = 3)
-    end
+    # p3 = plot(xlabel = "time", ylabel = "D")
+    # if !isempty(ts.D_ts)
+    #     ylim = lims(marginf, ts.D_ts)
+    #     plot!(p3, f.(ts.D_ts); ylim, label = "D", lw = 3)
+    # end
+    p3 = plot_ts_X(ts; f, marginf)    
 
     p4 = plot_politope(M)
     
@@ -36,6 +39,44 @@ function plot_res(M::SimModel, ts::ResTS; f = (x) -> x, marginf = 0.2)
         size = [800, 700], layout = 4)
 end
 
+## ----------------------------------------------------------------------------
+function plot_ts_concs!(p, ts; f = (x) -> x, marginf = 0.2, pkwargs...)
+    plot!(p, xlabel = "time", ylabel = "conc")
+    if !(isempty(ts.sg_ts) || isempty(ts.sl_ts))
+        ylim = lims(marginf, ts.sg_ts, ts.sl_ts)
+        plot!(p, f.(ts.sg_ts); ylim, label = "sg", lw = 3)
+        plot!(p, f.(ts.sl_ts); ylim, label = "sl", lw = 3)
+    end  
+    plot!(p; pkwargs...)  
+end
+plot_ts_concs(ts; f = (x) -> x, marginf = 0.2, pkwargs...) = 
+    plot_ts_concs!(plot(), ts; f, marginf, pkwargs...)    
+
+## ----------------------------------------------------------------------------
+function plot_ts_D!(p, ts; f = (x) -> x, marginf = 0.2, pkwargs...)
+    plot!(p; xlabel = "time", ylabel = "X")
+    if !isempty(ts.X_ts)
+        ylim = lims(marginf, ts.X_ts)
+        plot!(p, f.(ts.X_ts); ylim, label = "X", lw = 3)
+    end    
+    plot!(p; pkwargs...)  
+end
+plot_ts_D(ts; f = (x) -> x, marginf = 0.2, pkwargs...) =  
+    plot_ts_D!(plot(), ts; f, marginf, pkwargs...)    
+
+## ----------------------------------------------------------------------------
+function plot_ts_X!(p, ts; f = (x) -> x, marginf = 0.2, pkwargs...)
+    plot!(p; xlabel = "time", ylabel = "D")
+    if !isempty(ts.D_ts)
+        ylim = lims(marginf, ts.D_ts)
+        plot!(p, f.(ts.D_ts); ylim, label = "D", lw = 3)
+    end
+    plot!(p; pkwargs...)  
+end
+plot_ts_X(ts; f = (x) -> x, marginf = 0.2, pkwargs...) =  
+    plot_ts_X!(plot(), ts; f, marginf, pkwargs...)    
+
+## ----------------------------------------------------------------------------
 function plot_politope(M::SimModel; 
         D = 250.0,
         hits_count = 3000,
