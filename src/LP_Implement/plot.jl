@@ -88,11 +88,12 @@ function plot_politope(M::SimModel;
     Δvg = step(first(vg_ranges))
     vg_range = vgL:Δvg:vgU
     mX, MX = lXgamma(M)
+    vatpvgN = sum(length.(vg_ranges))
 
     p = plot(xlabel = "vatp", ylabel = "vg")
     hits = 0
     iters = 0
-    while hits < hits_count && iters < maxiters
+    while vatpvgN > 1 && hits < hits_count && iters < maxiters
         iters += 1
         vatp = rand(vatp_range)
         vg = rand(vg_range)

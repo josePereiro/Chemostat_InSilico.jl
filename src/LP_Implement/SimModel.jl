@@ -89,3 +89,10 @@ function lXgamma(M::SimModel)
     end
     return mX, MX
 end
+
+function ploy_box(M::SimModel)
+    vatp_range, vg_ranges = vatpvg_ranges(M)
+    vatpL, vatpU = first(vatp_range), last(vatp_range)
+    vgL, vgU = minimum(first.(vg_ranges)), maximum(last.(vg_ranges))
+    vatpL, vatpU, vgL, vgU
+end
