@@ -71,8 +71,14 @@ function push_plot_save(M, TS, it;
 end
 
 ## ---------------------------------------------------------
-# Common model
-M0 = InLP.SimModel(;
+let
+
+    # setup
+    sname = sim_name("LP_Implementation")
+    make_dirs(sname)
+
+    # base model
+    M0 = InLP.SimModel(;
             θvatp = 2, 
             θvg = 3, 
             niters = Int(5e4),
@@ -82,14 +88,7 @@ M0 = InLP.SimModel(;
             Δt = 0.5,
         )
 
-## ---------------------------------------------------------
-let
-
-    # setup
-    sname = sim_name("LP_Implementation")
-    make_dirs(sname)
-
-    @info "Doing" sname
+    @info "Starting simulation" sname
 
     # cache
     InLP.vgvatp_cache(M0)
@@ -113,6 +112,8 @@ let
         M = deepcopy(M0)
         M.D, M.ϵ, M.Vl, M.τ = D, ϵ, Vl, τ
         TS = InLP.ResTS()
+
+        @info "Doing" D ϵ Vl τ now()
 
         function on_iter(it, M)
 
