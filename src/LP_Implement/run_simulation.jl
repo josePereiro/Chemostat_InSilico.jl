@@ -16,7 +16,7 @@ function run_simulation!(M::SimModel;
     Xb =  M.Xb
     vatp_idx, vg_idx, vl_idx, obj_idx = M.vatp_idx, M.vg_idx, M.vl_idx, M.obj_idx
     Vg, Kg, Vl, Kl = M.Vg, M.Kg, M.Vl, M.Kl
-    δ, τ, Δt = M.δ, M.τ, M.Δt
+    σ, τ, Δt = M.σ, M.τ, M.Δt
     
     ## ---------------------------------------------------------
     # update model
@@ -103,7 +103,7 @@ function run_simulation!(M::SimModel;
 
                 for vg in vg_range
                     Xᵢ₋₁ = lXb[vg]
-                    term3 = Xᵢ₋₁ * (M.D + τ * M.sl + δ) # cellular dead/loose
+                    term3 = Xᵢ₋₁ * (M.D + τ * M.sl + σ) # cellular dead/loose
 
                     # update X
                     ΔX = (term1_term2 - term3) * Δt

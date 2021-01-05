@@ -106,17 +106,17 @@ let
     ϵs = collect(0.1:0.1:1.0) |> sort
     Ds = [0.0; 0.001:0.001:0.015; 10.0.^-(1.6:0.07:2.2)] |> unique |> sort
     Vls = [0.0, 0.1] |> sort
+    τs = [0.0, 0.0022] |> sort
     
-    for D in Ds, ϵ in ϵs, Vl in Vls
+    for D in Ds, ϵ in ϵs, Vl in Vls, τ in τs
 
         M = deepcopy(M0)
+        M.D, M.ϵ, M.Vl, M.τ = D, ϵ, Vl, τ
         TS = InLP.ResTS()
-        M.D = D
-        M.ϵ = ϵ
 
         function on_iter(it, M)
 
-            sim_params = (;M.D, M.ϵ, M.Δt, M.δ, M.τ, M.cg, M.Vl)
+            sim_params = (;M.D, M.ϵ, M.Δt, M.σ, M.τ, M.cg, M.Vl)
 
             # stead state
             stst = false
