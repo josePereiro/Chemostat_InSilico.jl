@@ -1,25 +1,27 @@
 import DrWatson: quickactivate
 quickactivate(@__DIR__, "Chemostat_InSilico")
 
-import Chemostat_InSilico
-const InCh = Chemostat_InSilico
-const InLP = InCh.LP_Implement
-const InU = InCh.Utilities
+@time begin
+    import Chemostat_InSilico
+    const InCh = Chemostat_InSilico
+    const InLP = InCh.LP_Implement
+    const InU = InCh.Utilities
 
-using ProgressMeter
-using Plots
-using Plots.PlotMeasures
-using InteractiveUtils
+    using ProgressMeter
+    using Plots
+    using Plots.PlotMeasures
+    using InteractiveUtils
 
-# import GR
-# GR.inline("png")
+    import GR
+    GR.inline("png")
 
-import UtilsJL
-const UJL = UtilsJL
-using Base.Threads
-using Serialization
-using Statistics
-using Dates
+    import UtilsJL
+    const UJL = UtilsJL
+    using Base.Threads
+    using Serialization
+    using Statistics
+    using Dates
+end
 
 ## ----------------------------------------------------------------------------
 # Meta
@@ -27,43 +29,98 @@ fileid = "2.1"
 fig_path(fname) = joinpath(InLP.CH3_FIGURES_DIR, fname)
 
 ## ----------------------------------------------------------------------------
+# Load DAT
 # DAT [[:DyM, :TS, :M], Vl, D, ϵ]
-DAT = UJL.load_data(InCh.CH3_DAT_BUNDLE_FILE)
+DAT_FILE = InCh.CH3_DAT_BUNDLE_FILE
+DAT = UJL.load_data(DAT_FILE)
 varinfo(Main, r"DAT")
 
 ## ----------------------------------------------------------------------------
-# Find beta
+# Compute marginals
 let
-    Vl, D, ϵ = DAT[:Vls][1], DAT[:Ds][5], DAT[:ϵs][3]
-    M = DAT[:M, Vl, D, ϵ]
-    LP_cache = InLP.vgvatp_cache(M)
-    DyMs = DAT[:DyM, Vl, D, ϵ]
+    δ = DAT[:δ]
+    dead_th = DAT[:dead_th]
     
-    # Maxent
-    δ = 0.05 # discretization factor
-    y = abs(M.net.S[2, 6]) # atp/biomass yield
-    maxentf(beta) = (vatp, vg) -> exp(beta*vatp/y)
-    
-    # # Gradient descent
-    biom_ider = "biom"
-    target = InLP.marginal_av(DyMs[biom_ider]) # dynamic mean
-    x0 = 5e3
-    x1 = 5.5e3
-    maxΔ = 3e2
-    th = 1e-3
-    gd_xs = []
-    gd_ys = []
-    maxiters = 5000
-    beta0 = InU.grad_desc(;target, x0, x1, maxΔ, th, maxiters) do beta
-        MEMs = InLP.get_marginals(maxentf(beta), M, [biom_ider]; δ, verbose = false, LP_cache)
-        f = InLP.marginal_av(MEMs[biom_ider])
-    end
-    
-    MEMs = InLP.get_marginals(maxentf(beta0), M, [biom_ider]; δ, verbose = false, LP_cache)
+    # Vl, D, ϵ = DAT[:Vls][1], DAT[:Ds][6], DAT[:ϵs][1]
+    for Vl in DAT[:Vls], D in DAT[:Ds], ϵ in DAT[:ϵs]
 
-    p1 = InLP.plot_marginals(DyMs, [biom_ider])
-    p2 = InLP.plot_marginals(MEMs, [biom_ider])
-    plot(p1, p2)
+        M, TS = DAT[[:M, :TS], Vl, D, ϵ]
+        LP_cache = InLP.vgvatp_cache(M)
+        @info "Doing" Vl D ϵ M.X
+
+        if M.X > dead_th # Check dead
+
+            # Dynamic marginal
+            f(vatp, vg) = M.Xb[vatp][vg] / M.X
+            DAT[:DyM,  M.Vl, M.D, M.ϵ] = InLP.get_marginals(f, M; δ, verbose = false)
+            DyMs = DAT[:DyM, Vl, D, ϵ]
+
+            # Maxent
+            y = abs(M.net.S[2, 6]) # atp/biomass yield
+            maxentf(beta) = (vatp, vg) -> exp(beta*vatp/y)
+            
+            # # Gradient descent
+            biom_ider = "biom"
+            target = InLP.marginal_av(DyMs[biom_ider]) # dynamic mean
+            x0, x1 = 1e3, 9e2
+            maxΔ = 6e2
+            th = 1e-3
+            maxiters = 500
+            beta0 = InU.grad_desc(;target, x0, x1, maxΔ, th, maxiters) do beta
+                MEMs = InLP.get_marginals(maxentf(beta), M, [biom_ider]; δ, verbose = false, LP_cache)
+                f = InLP.marginal_av(MEMs[biom_ider])
+            end
+            DAT[:beta0, Vl, D, ϵ] = beta0
+            DAT[:MEMs, Vl, D, ϵ] = InLP.get_marginals(maxentf(beta0), M; δ, LP_cache)
+            
+        else
+
+            # Empty marginals
+            DAT[:beta0, Vl, D, ϵ] = NaN
+            DAT[:MEMs, Vl, D, ϵ] = Dict(rxn => Dict(0.0 => 0.0) for rxn in M.net.rxns)
+            DAT[:DyM, Vl, D, ϵ] = Dict(rxn => Dict(0.0 => 0.0) for rxn in M.net.rxns)
+        end
+    end
+end
+
+## ----------------------------------------------------------------------------
+# plot marginals
+let
+    for Vl in DAT[:Vls], D in DAT[:Ds], ϵ in DAT[:ϵs]
+
+        M, TS = DAT[[:M, :TS], Vl, D, ϵ]
+        DyMs = DAT[:DyM, Vl, D, ϵ]
+        MEMs = DAT[:MEMs, Vl, D, ϵ]
+        beta0 = DAT[:beta0, Vl, D, ϵ]
+        isnan(beta0) && continue
+
+        ps = []
+        gparams = (;xlabel = "flx", ylabel = "prob", 
+            xaxis = nothing, yaxis = nothing, grid = false, 
+            titlefont = 10, xaxisfont = 10)
+        sparams =(;alpha = 0.8, lw = 3, ylim = [0.0, Inf])
+        for rxn in M.net.rxns
+            DyM = DyMs[rxn]
+            MEM = MEMs[rxn]
+            
+            try
+                p = plot(;title = rxn, gparams...)
+                plot!(p, DyM; label = "", color = :red, sparams...)
+                plot!(p, MEM; label = "", color = :blue, sparams...)
+                push!(ps, p)
+            catch err 
+                @error string("Doing $rxn\n", UJL.err_str(err))
+            end
+        end
+        p = plot(ps...; layout = length(ps))
+
+        # saving
+        pname = UJL.mysavename("marginals", "png"; Vl, D, ϵ, beta0)
+        fname = fig_path(string(fileid, "_", pname))    
+        savefig(p, fname)
+        @info "Plotting" fname
+
+    end
 end
 
 ## ----------------------------------------------------------------------------

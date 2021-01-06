@@ -7,15 +7,17 @@ function get_marginals(f::Function, M::SimModel, rxns = M.net.rxns; verbose = tr
         LP_cache = vgvatp_cache(M)
     end
     
+    vatp_range, vg_ranges = vatpvg_ranges(M)
+
     # Collecting
     verbose && (prog = Progress(3 * length(rxns)))
     raw_marginals = Dict()
     for rxn in rxns
         rxni = rxnindex(M.net, rxn)
         raw_marginal = get!(raw_marginals, rxn, Dict{Float64, Float64}())
-        for (vatp, lX) in M.Xb
+        for (vatpi, vatp) in enumerate(vatp_range)
             lcache = LP_cache[vatp]
-            for (vg, X) in lX
+            for vg in vg_ranges[vatpi]
                 flx = lcache[vg][rxni]
                 get!(raw_marginal, flx, 0.0)
                 raw_marginal[flx] += f(vatp, vg)

@@ -1,26 +1,28 @@
 import DrWatson: quickactivate
 quickactivate(@__DIR__, "Chemostat_InSilico")
 
-import Chemostat_InSilico
-const InCh = Chemostat_InSilico
-const InLP = InCh.LP_Implement
-const InU = InCh.Utilities
+@time begin
+    import Chemostat_InSilico
+    const InCh = Chemostat_InSilico
+    const InLP = InCh.LP_Implement
+    const InU = InCh.Utilities
 
-using ProgressMeter
-using Plots
+    using ProgressMeter
+    using Plots
 
-# Test
-# import GR
-# GR.inline("png")
+    # Test
+    import GR
+    GR.inline("png")
 
-import UtilsJL
-const UJL = UtilsJL
+    import UtilsJL
+    const UJL = UtilsJL
 
-using Serialization
-using Base.Threads
-using Dates
-using Statistics
-using InteractiveUtils
+    using Serialization
+    using Base.Threads
+    using Dates
+    using Statistics
+    using InteractiveUtils
+end
 
 ## ---------------------------------------------------------
 # Tools
@@ -80,8 +82,10 @@ end
 ## ---------------------------------------------------------
 # Simulation 
 sname = sim_name("LP_Implementation")
-let
+DAT = UJL.DictTree() # To Store relevant information
+@time let
     # setup
+    
     make_dirs(sname)
 
     # base model
@@ -107,25 +111,27 @@ let
     savefig_frec = 1000
     savedat_frec = 1000
     push_frec = 10
-    dead_th = 1e-2
+    dead_th = DAT[:dead_th] = 1e-2
 
     # Test
-    # ϵs = collect(0.1:0.1:1.0) |> sort
-    ϵs = [0.01] |> sort
-    # Ds = [0.0; 0.001:0.001:0.015; 10.0.^-(1.6:0.07:2.2)] |> unique |> sort
-    Ds = [0.0; 0.001:0.001:0.015] |> unique |> sort
-    # Vls = [0.0, 0.1] |> sort
+    ϵs = [0.02:0.02:0.1; 0.2:0.1:1.0]
+    Ds = [0.0; 0.001:0.001:0.015; 10.0.^-(1.6:0.1:2.2)] |> unique |> sort
+    # Vls = [0.0, 0.1]
     Vls = [0.0]
-    # τs = [0.0, 0.0022] |> sort
+    # τs = [0.0, 0.0022]
     τs = [0.0] |> sort
     
+    c = 1
+    N = prod(length.([ϵs, Ds, Vls, τs]))
+    @info "Computing $(N) iterations"
+
     for D in Ds, ϵ in ϵs, Vl in Vls, τ in τs
 
         M = deepcopy(M0)
         M.D, M.ϵ, M.Vl, M.τ = D, ϵ, Vl, τ
         TS = InLP.ResTS()
 
-        @info "Doing" D ϵ Vl τ now()
+        @info "Doing $c/$N ..." D ϵ Vl τ now()
 
         function on_iter(it, M)
 
@@ -158,26 +164,17 @@ end
 
 ## ----------------------------------------------------------------------------
 # Collecting Bundle
-DAT = UJL.DictTree()
 let
     ddir = dat_dir(sname) 
     @assert isdir(ddir)
-
-    # Dynamic marginal
-    δ = 0.01 # discretization factor
-    DAT[:DyM, :δ] = δ
 
     dfiles = readdir(ddir)
     N  = length(dfiles)
     for (i, file) in dfiles |> enumerate
         TS, M = deserialize(joinpath(ddir, file))
-        @info "Doing $i/$N" M.D M.ϵ file; println()
+        @info "Doing $i/$N ... " M.D M.ϵ file; println()
         DAT[:TS, M.Vl, M.D, M.ϵ] = TS
         DAT[:M, M.Vl, M.D, M.ϵ] = M
-
-        # Dynamic marginal
-        f(vatp, vg) = M.Xb[vatp][vg] / M.X
-        DAT[:DyM,  M.Vl, M.D, M.ϵ] = InLP.get_marginals(f, M; δ, verbose = false)
 
         push!(get!(DAT, [], :Ds), M.D)
         push!(get!(DAT, [], :Vls), M.Vl)

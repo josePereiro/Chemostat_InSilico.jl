@@ -21,18 +21,18 @@ using ProgressMeter
 
 ## ------------------------------------------------------------------
 # TOOLS
-function sim_filename(dirtuple; rootdir, name, ext, wkargs...) 
+function sim_filename(dirtuple, rootdir, name, ext; wkargs...) 
     dir = joinpath(rootdir, UJL.mysavename("", ""; dirtuple...))
     !isdir(dir) && mkpath(dir)
     joinpath(dir, UJL.mysavename(name, ext; dirtuple..., wkargs...))
 end
 
 MCdata_filename(dirtuple; wkargs...) = 
-    sim_filename(dirtuple; name = "Ch2-MC-Data", rootdir = InCh.CH2_DATA_DIR, ext = "bson", wkargs...) 
+    sim_filename(dirtuple, InCh.CH2_DATA_DIR, "Ch2-MC-Data", "bson"; wkargs...) 
     
 
 MCfig_filename(name, dirtuple; wkargs...) =
-    sim_filename(dirtuple; name, rootdir = InCh.CH2_FIGURES_DIR, ext = "png", wkargs...) 
+    sim_filename(dirtuple, InCh.CH2_FIGURES_DIR, name, "png"; wkargs...) 
 
 ## ------------------------------------------------------------------
 # PLOTS
