@@ -132,6 +132,7 @@ DAT = UJL.DictTree() # To Store relevant information
         TS = InLP.ResTS()
 
         @info "Doing $c/$N ..." D ϵ Vl τ now()
+        c += 1
 
         function on_iter(it, M)
 
