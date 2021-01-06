@@ -2,18 +2,25 @@ import DrWatson: quickactivate
 quickactivate(@__DIR__, "Chemostat_InSilico")
 
 import Chemostat_InSilico
-const InLP = Chemostat_InSilico.LP_Implement
-const InU = Chemostat_InSilico.Utilities
+const InCh = Chemostat_InSilico
+const InLP = InCh.LP_Implement
+const InU = InCh.Utilities
 
 using ProgressMeter
 using Plots
-import GR
-GR.inline("png")
+
+# Test
+# import GR
+# GR.inline("png")
+
+import UtilsJL
+const UJL = UtilsJL
 
 using Serialization
 using Base.Threads
 using Dates
 using Statistics
+using InteractiveUtils
 
 ## ---------------------------------------------------------
 # Tools
@@ -71,16 +78,16 @@ function push_plot_save(M, TS, it;
 end
 
 ## ---------------------------------------------------------
+# Simulation 
+sname = sim_name("LP_Implementation")
 let
-
     # setup
-    sname = sim_name("LP_Implementation")
     make_dirs(sname)
 
     # base model
     M0 = InLP.SimModel(;
-            θvatp = 2, 
-            θvg = 3, 
+            δvatp = 2, 
+            δvg = 3, 
             niters = Int(5e4),
             X0 = 1.5,
             sg0 = 15.0,
@@ -143,3 +150,43 @@ let
         InLP.run_simulation!(M; on_iter, verbose = true, force = false)
     end
 end
+
+## ----------------------------------------------------------------------------
+sname = "LP_Implementation__2020-12-21T18:15:16.132" # Test
+
+## ----------------------------------------------------------------------------
+# Collecting Bundle
+DAT = UJL.DictTree()
+let
+    ddir = dat_dir(sname) 
+    @assert isdir(ddir)
+
+    # Dynamic marginal
+    δ = 0.01 # discretization factor
+    DAT[:DyM, :δ] = δ
+
+    dfiles = readdir(ddir)
+    N  = length(dfiles)
+    for (i, file) in dfiles |> enumerate
+        TS, M = deserialize(joinpath(ddir, file))
+        @info "Doing $i/$N" M.D M.ϵ file; println()
+        DAT[:TS, M.Vl, M.D, M.ϵ] = TS
+        DAT[:M, M.Vl, M.D, M.ϵ] = M
+
+        # Dynamic marginal
+        f(vatp, vg) = M.Xb[vatp][vg] / M.X
+        DAT[:DyM,  M.Vl, M.D, M.ϵ] = InLP.get_marginals(f, M; δ, verbose = false)
+
+        push!(get!(DAT, [], :Ds), M.D)
+        push!(get!(DAT, [], :Vls), M.Vl)
+        push!(get!(DAT, [], :ϵs), M.ϵ)
+    end
+    sort!(unique!(DAT[:Ds]))
+    sort!(unique!(DAT[:Vls]))
+    sort!(unique!(DAT[:ϵs]))
+end
+varinfo(Main, r"DAT")
+
+## ----------------------------------------------------------------------------
+# SAVING
+UJL.save_data(InCh.CH3_DAT_BUNDLE_FILE, DAT)

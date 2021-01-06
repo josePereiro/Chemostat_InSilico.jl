@@ -1,6 +1,6 @@
 ## ---------------------------------------------------------  
 cache_file(M::SimModel, marginf) = joinpath(CACHE_DIR, 
-    mysavename("cache_", "jld"; M.θvatp, M.θvg, marginf)
+    mysavename("cache_", "jld"; M.δvatp, M.δvg, marginf)
 )
 
 ## ---------------------------------------------------------  
@@ -8,8 +8,8 @@ cache_file(M::SimModel, marginf) = joinpath(CACHE_DIR,
 function vgvatp_cache(M::SimModel; marginf::Int = 50, up_frec = 10)::Dict{Float64, Dict{Float64, Vector{Float64}}}
 
     # setup
-    vatp_margin = abs(marginf * (10.0^(-M.θvatp)))
-    vg_margin = abs(marginf * (10.0^(-M.θvg)))
+    vatp_margin = abs(marginf * (10.0^(-M.δvatp)))
+    vg_margin = abs(marginf * (10.0^(-M.δvg)))
     M = deepcopy(M)
 
     # check cache

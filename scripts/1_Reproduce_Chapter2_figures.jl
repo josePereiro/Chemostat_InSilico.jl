@@ -1,14 +1,20 @@
 using DrWatson
 quickactivate(@__DIR__, "Chemostat_InSilico")
 
-using Chemostat_Dynamics
-using Chemostat_Dynamics.Polytopes
-using Chemostat_Dynamics.Utilities
-using Chemostat_Dynamics.MonteCarlo
-using Chemostat_Dynamics.MaxEnt
+using Chemostat_InSilico
+const InCh = Chemostat_InSilico
+const InPo = InCh.Polytopes
+const InU = InCh.Utilities
+const InMC = InCh.MonteCarlo
+const InEP = InCh.MaxEnt
+
+import UtilsJL
+const UJL = UtilsJL
+
 using Plots
 import GR
 GR.inline("png")
+
 using Statistics
 using Base.Threads
 using ProgressMeter
@@ -16,17 +22,17 @@ using ProgressMeter
 ## ------------------------------------------------------------------
 # TOOLS
 function sim_filename(dirtuple; rootdir, name, ext, wkargs...) 
-    dir = joinpath(rootdir, savename(dirtuple))
+    dir = joinpath(rootdir, UJL.mysavename("", ""; dirtuple...))
     !isdir(dir) && mkpath(dir)
-    joinpath(dir, savename(name, (;dirtuple..., wkargs...), ext))
+    joinpath(dir, UJL.mysavename(name, ext; dirtuple..., wkargs...))
 end
 
 MCdata_filename(dirtuple; wkargs...) = 
-    sim_filename(dirtuple; name = "Ch2-MC-Data", rootdir = DATA_DIR, ext = "bson", wkargs...) 
+    sim_filename(dirtuple; name = "Ch2-MC-Data", rootdir = InCh.CH2_DATA_DIR, ext = "bson", wkargs...) 
     
 
 MCfig_filename(name, dirtuple; wkargs...) =
-    sim_filename(dirtuple; name, rootdir = FIGURES_DIR, ext = "png", wkargs...) 
+    sim_filename(dirtuple; name, rootdir = InCh.CH2_FIGURES_DIR, ext = "png", wkargs...) 
 
 ## ------------------------------------------------------------------
 # PLOTS
@@ -39,15 +45,15 @@ function plot_f2_2_f2_4(;pol, mut_rates, betas, ncells, ciodiff, mstgth, verbose
     
     dirtuple = (;ncells)
     for (fig, marginal_fun, vfun) in [
-                                        ("Fig-2.2", vatp_marginal_pdf, vatp), 
-                                        ("Fig-2.4", vg_marginal_pdf, vg)
+                                        ("Fig-2.2", InEP.vatp_marginal_pdf, InMC.vatp), 
+                                        ("Fig-2.4", InEP.vg_marginal_pdf, InMC.vg)
                                     ]
         ps = []
         for (mutr, beta) in zip(mut_rates, betas)
 
             filename = MCdata_filename(dirtuple; mutr, ciodiff, mstgth)
-            MCvatps, MCvgs = load_data(filename)
-            cells = Cell.([pol], MCvatps, MCvgs)
+            MCvatps, MCvgs = UJL.load_data(filename)
+            cells = InMC.Cell.([pol], MCvatps, MCvgs)
 
             vrange, probs = marginal_fun(pol, beta; n = Int(1e5))   
             
@@ -108,18 +114,18 @@ function plot_f2_5(;pol, mut_rates, betas, ncells, ciodiff, mstgth, verbose = tr
     for (mutr, beta) in zip(mut_rates, betas)
 
         filename = MCdata_filename(dirtuple; mutr, ciodiff, mstgth)
-        MCvatps, MCvgs = load_data(filename)
-        cells = Cell.([pol], MCvatps, MCvgs)
+        MCvatps, MCvgs = UJL.load_data(filename)
+        cells = InMC.Cell.([pol], MCvatps, MCvgs)
 
-        rvg, vgprobs = vg_marginal_pdf(pol, beta; n = Int(1e5))   
+        rvg, vgprobs = InEP.vg_marginal_pdf(pol, beta; n = Int(1e5))   
         Δvg = step(rvg)
-        rvatp, vatpprobs = vatp_marginal_pdf(pol, beta; n = Int(1e5))   
-        Δvatp = step(rvatp)
+        rvatp, vatpprobs = InEP.vatp_marginal_pdf(pol, beta; n = Int(1e5))   
+        InPo.Δvatp = step(rvatp)
         
-        MC_vg_mean = mean(vg.(cells))
+        MC_vg_mean = mean(InMC.vg.(cells))
         MaxEnt_vg_mean = sum(vgprobs .* rvg .* Δvg)
-        MC_vatp_mean = mean(vatp.(cells))
-        MaxEnt_vatp_mean = sum(vatpprobs .* rvatp .* Δvatp)
+        MC_vatp_mean = mean(InMC.InMC.vatp(cells))
+        MaxEnt_vatp_mean = sum(vatpprobs .* rvatp .* InPo.Δvatp)
 
         verbose && @info "Ploting 2.5" mutr beta MC_vg_mean MaxEnt_vg_mean MC_vatp_mean MaxEnt_vatp_mean
 
@@ -141,15 +147,17 @@ end
 ## ------------------------------------------------------------------
 # RUN SIMULATIONS
 let
-    pol = Polytope()
+    pol = InPo.Polytope()
     mut_rates = 0.0:0.1:1.0 # mutation rate
     mstgths = [(0.4:0.2:1.0); Inf] # mutation strengths
     nmstgth = 0.0 # not mutation strength
     ncells = Int(1e6)
-    @show iters_bkpoints = floor.(Int, ncells .* 10.0 .^ (-1:0.5:3)) |> sort
+    iters_bkpoints = floor.(Int, ncells .* 10.0 .^ (-1:0.5:3)) |> sort
+    @show iters_bkpoints
     curr_bkpoint = 1
     # This must be set so that all breakpoints are possible
-    @show feedback_frec = floor(Int, (minimum(iters_bkpoints) ÷ nthreads()) * 1.05) 
+    feedback_frec = floor(Int, (minimum(iters_bkpoints) ÷ nthreads()) * 1.05) 
+    @show feedback_frec
     niters = maximum(iters_bkpoints)
     threading_th = Int(1e5)
     gdth = 1e-5
@@ -173,7 +181,7 @@ let
             verbose && @info "Running Montecarlo " ncells mstgth mutr niters 
 
             # Functions
-            pinking_fun(cell) = rand() < vatp(cell)/vatpU(pol)
+            pinking_fun(cell) = rand() < InMC.vatp(cell)/InPo.vatpU(pol)
             function feedback_fun(it, cells)
                 # Here I take samples at approx iters_bkpoints
                 if curr_bkpoint <= length(iters_bkpoints)
@@ -181,7 +189,7 @@ let
                     if it >= bkpoint 
                         ciodiff = log10(ncells) - log10(bkpoint)
                         filename = MCdata_filename(dirtuple; mutr, ciodiff, mstgth)
-                        save_data(filename, (vatp.(cells), vg.(cells)))
+                        UJL.save_data(filename, (InMC.vatp.(cells), InMC.vg.(cells)); verbose = false)
                         @assert isfile(filename)
                         curr_bkpoint += 1
                     end
@@ -189,10 +197,10 @@ let
                 return false
             end
             
-            at_mutate(parent_cell) = generate_similar_cell(parent_cell, mstgth * Δvatp(pol))
-            at_notmutate(parent_cell) = generate_similar_cell(parent_cell, nmstgth * Δvatp(pol))
+            at_mutate(parent_cell) = InMC.generate_similar_cell(parent_cell, mstgth * InPo.Δvatp(pol))
+            at_notmutate(parent_cell) = InMC.generate_similar_cell(parent_cell, nmstgth * InPo.Δvatp(pol))
             @time begin 
-                runMC(;p = pol, ncells, niters, mutr, 
+                InMC.runMC(;p = pol, ncells, niters, mutr, 
                     threading_th, pinking_fun, 
                     feedback_fun, feedback_frec,
                     at_mutate, at_notmutate,
@@ -207,7 +215,7 @@ let
     # Run MaxEnt for each it breakpoint and plot
     verbose = false
     n = length(iters_bkpoints) * length(mstgths) * length(mut_rates)
-    prog = Progress(n; desc = "Maxent-Ploting ... ")
+    prog = Progress(n; desc = "Maxent-Plotting ... ")
     c = 1
     for it in collect(iters_bkpoints)
 
@@ -220,9 +228,9 @@ let
             for mutr in mut_rates
                 # Load MC Data
                 filename = MCdata_filename(dirtuple; mutr, ciodiff, mstgth)
-                MCvatps, MCvgs = load_data(filename)
-                cells = Cell.([pol], MCvatps, MCvgs)
-                MC_vatp_mean = mean(vatp.(cells))
+                MCvatps, MCvgs = UJL.load_data(filename)
+                cells = InMC.Cell.([pol], MCvatps, MCvgs)
+                MC_vatp_mean = mean(InMC.vatp(cells))
                 showvalues[:MC_vatp_mean] = MC_vatp_mean
 
                 target = [MC_vatp_mean]
@@ -231,11 +239,11 @@ let
                 x1 = [10.0] 
                 C = [500.0]
                 MaxEnt_vatp_mean = nothing
-                beta = grad_desc(;target, x0, x1, C, th = gdth, verbose) do x
+                beta = InU.grad_desc(;target, x0, x1, C, th = gdth, verbose) do x
                     beta = first(x)
-                    rvatp, probs = vatp_marginal_pdf(pol, beta; n = Int(1e5))   
-                    Δvatp = step(rvatp)  
-                    MaxEnt_vatp_mean = sum(probs .* rvatp .* Δvatp)       
+                    rvatp, probs = InEP.vatp_marginal_pdf(pol, beta; n = Int(1e5))   
+                    InPo.Δvatp = step(rvatp)  
+                    MaxEnt_vatp_mean = sum(probs .* rvatp .* InPo.Δvatp)       
                     return MaxEnt_vatp_mean
                 end |> first
                 push!(betas, max(0.0, beta))

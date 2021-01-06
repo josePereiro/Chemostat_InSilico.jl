@@ -8,9 +8,9 @@ version = "1.0.0"
 
 [[Adapt]]
 deps = ["LinearAlgebra"]
-git-tree-sha1 = "42c42f2221906892ceb765dbcb1a51deeffd86d7"
+git-tree-sha1 = "345a14764e43fe927d6f5c250fe4c8e4664e6ee8"
 uuid = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
-version = "2.3.0"
+version = "2.4.0"
 
 [[Artifacts]]
 deps = ["Pkg"]
@@ -909,8 +909,8 @@ version = "1.0.2"
 uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 
 [[UtilsJL]]
-deps = ["BSON", "Colors", "Dates", "Distributed", "DrWatson", "FileIO", "FixedPointNumbers", "Images", "PkgTemplates", "Plots", "Printf", "Serialization", "SparseArrays"]
-git-tree-sha1 = "9587239bfb315ae3e2462b4f6cc238b6194743e2"
+deps = ["BSON", "Colors", "Dates", "Distributed", "DrWatson", "FileIO", "FixedPointNumbers", "Images", "Logging", "PkgTemplates", "Plots", "Printf", "Serialization", "SparseArrays"]
+path = "/Users/Pereiro/.julia/dev/UtilsJL"
 uuid = "1d417f3e-fd42-11ea-18da-dda57c9b97b2"
 version = "0.4.5"
 

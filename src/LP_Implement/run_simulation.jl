@@ -32,7 +32,7 @@ function run_simulation!(M::SimModel;
     i_vatp_range, vatp_range, vg_ranges = nothing, nothing, nothing
     vg_ub0, vl_ub0 = Inf, Inf
     vatpvgN, vatpN = 0, 0
-    recompute_ranges_th = (10.0^(-M.θvg))/3
+    recompute_ranges_th = (10.0^(-M.δvg))/3
     wage = similar_board(Xb, 0) # world age
     ittime_prom = 0.0
 

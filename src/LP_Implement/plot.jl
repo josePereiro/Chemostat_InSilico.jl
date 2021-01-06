@@ -10,27 +10,9 @@ end
 
 ## ----------------------------------------------------------------------------
 function plot_res(M::SimModel, ts::ResTS; f = (x) -> x, marginf = 0.2)
-    
-    # p1 = plot(xlabel = "time", ylabel = "conc")
-    # if !(isempty(ts.sg_ts) || isempty(ts.sl_ts))
-    #     ylim = lims(marginf, ts.sg_ts, ts.sl_ts)
-    #     plot!(p1, f.(ts.sg_ts); ylim, label = "sg", lw = 3)
-    #     plot!(p1, f.(ts.sl_ts); ylim, label = "sl", lw = 3)
-    # end
+
     p1 = plot_ts_concs(ts; f, marginf)    
-    
-    # p2 = plot(xlabel = "time", ylabel = "X")
-    # if !isempty(ts.X_ts)
-    #     ylim = lims(marginf, ts.X_ts)
-    #     plot!(p2, f.(ts.X_ts); ylim, label = "X", lw = 3)
-    # end    
     p2 = plot_ts_D(ts; f, marginf)    
-    
-    # p3 = plot(xlabel = "time", ylabel = "D")
-    # if !isempty(ts.D_ts)
-    #     ylim = lims(marginf, ts.D_ts)
-    #     plot!(p3, f.(ts.D_ts); ylim, label = "D", lw = 3)
-    # end
     p3 = plot_ts_X(ts; f, marginf)    
 
     p4 = plot_politope(M)
@@ -75,6 +57,31 @@ function plot_ts_X!(p, ts; f = (x) -> x, marginf = 0.2, pkwargs...)
 end
 plot_ts_X(ts; f = (x) -> x, marginf = 0.2, pkwargs...) =  
     plot_ts_X!(plot(), ts; f, marginf, pkwargs...)    
+
+## ----------------------------------------------------------------------------
+function plot_marginals(marginals, rxns = keys(marginals))
+    ps = []
+    params = (;xlabel = "flx", ylabel = "prob", yaxis = nothing, grid = false)
+    for rxn in rxns
+        marginal = marginals[rxn]
+        # Plots
+        try
+            p = plot(;title = rxn, params...)
+            plot!(p, marginal; label = "", color = :red, alpha = 0.9, lw = 3, ylim = [0.0, Inf])
+
+            av = marginal_av(marginal)
+            std = sqrt(marginal_va(marginal))
+
+            vline!(p, [av]; label = "", alpha = 0.7, lw = 2, ls = :dash, color = :black)
+            vline!(p, [av - std]; label = "", alpha = 0.3, lw = 2, ls = :dot, color = :black)
+            vline!(p, [av + std]; label = "", alpha = 0.3, lw = 2, ls = :dot, color = :black)
+            push!(ps, p)
+        catch err 
+            @error string("Doing $rxn\n", err_str(err))
+        end
+    end
+    plot(ps...; layout = length(ps))
+end
 
 ## ----------------------------------------------------------------------------
 function plot_politope(M::SimModel; 

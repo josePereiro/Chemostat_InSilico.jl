@@ -2,8 +2,9 @@ import DrWatson: quickactivate
 quickactivate(@__DIR__, "Chemostat_InSilico")
 
 import Chemostat_InSilico
-const ChIS = Chemostat_InSilico
-const InLP = ChIS.LP_Implement
+const InCh = Chemostat_InSilico
+const InLP = InCh.LP_Implement
+const InU = InCh.Utilities
 
 using ProgressMeter
 using Plots
@@ -26,27 +27,64 @@ fileid = "2.1"
 fig_path(fname) = joinpath(InLP.CH3_FIGURES_DIR, fname)
 
 ## ----------------------------------------------------------------------------
-# DAT
-dat_dir = joinpath(ChIS.CH3_DATA_DIR, "LP_Implementation__2020-12-21T18:15:16.132")
-@assert isdir(dat_dir)
-DAT = UJL.DictTree()
-for (root, _, files) in walkdir(dat_dir)
-    N  = length(files)
-    for (i, file) in files |> enumerate
-        TS, M = deserialize(joinpath(dat_dir, file))
-        @info "Loaded $i/$N" M.D M.ϵ file; println()
-        DAT[:TS, M.Vl, M.D, M.ϵ] = TS
-        DAT[:M, M.Vl, M.D, M.ϵ] = M
-        push!(get!(DAT, [], :Ds), M.D)
-        push!(get!(DAT, [], :Vls), M.Vl)
-        push!(get!(DAT, [], :ϵs), M.ϵ)
-    end
-    sort!(unique!(DAT[:Ds]))
-    sort!(unique!(DAT[:Vls]))
-    sort!(unique!(DAT[:ϵs]))
-end
+# DAT [[:DyM, :TS, :M], Vl, D, ϵ]
+DAT = UJL.load_data(InCh.CH3_DAT_BUNDLE_FILE)
 varinfo(Main, r"DAT")
 
+## ----------------------------------------------------------------------------
+# Find beta
+let
+    Vl, D, ϵ = DAT[:Vls][1], DAT[:Ds][5], DAT[:ϵs][1]
+    M = DAT[:M, Vl, D, ϵ]
+    DyMs = DAT[:DyM, Vl, D, ϵ]
+    
+    # Maxent
+    δ = 0.05 # discretization factor
+    y = abs(M.net.S[2, 6]) # atp/biomass yield
+    maxentf(beta) = (vatp, vg) -> exp(beta*vatp/y) + 0.003
+    
+    # # Gradient descent
+    biom_ider = "biom"
+    target = InLP.marginal_av(DyMs[biom_ider]) # dynamic mean
+    x0 = 1e2
+    x1 = 2e2
+    maxΔ = 3e2
+    th = 1e-3
+    gd_xs = []
+    gd_ys = []
+    maxiters = 15
+    beta0 = InU.grad_desc(;target, x0, x1, maxΔ, th, maxiters) do beta
+        MEMs = InLP.get_marginals(maxentf(beta), M, [biom_ider]; δ, verbose = false)
+        f = InLP.marginal_av(MEMs[biom_ider])
+    end
+    
+    MEMs = InLP.get_marginals(maxentf(beta0), M, [biom_ider]; δ, verbose = false)
+
+    p1 = InLP.plot_marginals(DyMs, [biom_ider])
+    p2 = InLP.plot_marginals(MEMs, [biom_ider])
+    plot(p1, p2)
+end
+
+## ----------------------------------------------------------------------------
+let
+    f(x) = x^3 - 10.0 * x + 24
+
+    target = 1.0
+    x0 = 0.0
+    x1 = 0.01
+    gd_xs = []
+    gd_ys = []
+    xtarget = InU.grad_desc(;target, x0, x1, maxΔ = 1e-4, th = 1e-3) do x
+        y = f(x)
+        push!(gd_xs, x); push!(gd_ys, y)
+        y
+    end
+
+    p = plot()
+    scatter!(p, gd_xs, gd_ys; label = "gd", alpha = 0.7)
+    plot!(p, gd_xs, f.(gd_xs); label = "real", ls = :solid, alpha = 0.7)
+    p
+end
 ## ----------------------------------------------------------------------------
 # _vs_time_vs_ϵ_vs_D
 let
@@ -210,7 +248,7 @@ let
         vgL, vgU = Inf, -Inf
         for ϵ in ϵs
             M = DAT[:M, Vl, D, ϵ]
-            vatpL, vatpU, vgL, vgU = InLP.ploy_box(M)
+            vatpL, vatpU, vgL, vgU = InLP.pol_box(M)
             vatp_margin = abs(vatpL - vatpU) * marginf
             vg_margin = abs(vgL - vgU) * marginf
             vatpL = min(vatpL, vatpL - vatp_margin)

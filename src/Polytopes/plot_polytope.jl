@@ -21,5 +21,4 @@ function plot_polytope!(plt, p::Polytope)
     plot!(ylim = [vgL(p) - ymargin, vgU(p) + ymargin])
     plt
 end
-
-plot_polytope!(plt, p::ΔPolytope) = plot_polytope!(plt, p.p)
+plot_polytope(p::Polytope) = plot_polytope!(plot(), p)
