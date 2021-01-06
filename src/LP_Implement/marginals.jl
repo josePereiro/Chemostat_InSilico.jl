@@ -1,17 +1,19 @@
 discretize(n, Δ) = round(n / Δ) * Δ
 
-function get_marginals(f, M0, rxns = M0.net.rxns; verbose = true, δ = 0.06)
-    isempty(M0.Xb) && error("Xb is empty!!!")
+function get_marginals(f::Function, M::SimModel, rxns = M.net.rxns; verbose = true, δ = 0.06, LP_cache = nothing)
+    isempty(M.Xb) && error("Xb is empty!!!")
     
-    LP_cache = vgvatp_cache(M0)
+    if isnothing(LP_cache)
+        LP_cache = vgvatp_cache(M)
+    end
     
     # Collecting
     verbose && (prog = Progress(3 * length(rxns)))
     raw_marginals = Dict()
     for rxn in rxns
-        rxni = rxnindex(M0.net, rxn)
+        rxni = rxnindex(M.net, rxn)
         raw_marginal = get!(raw_marginals, rxn, Dict{Float64, Float64}())
-        for (vatp, lX) in M0.Xb
+        for (vatp, lX) in M.Xb
             lcache = LP_cache[vatp]
             for (vg, X) in lX
                 flx = lcache[vg][rxni]

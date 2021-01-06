@@ -25,8 +25,8 @@ using InteractiveUtils
 ## ---------------------------------------------------------
 # Tools
 sim_name(name; sim_params...) = string(InLP.mysavename(name, ""; sim_params...), "__", now())
-fig_dir(sname) = joinpath(InLP.CH3_FIGURES_DIR, sname)
-dat_dir(sname) = joinpath(InLP.CH3_DATA_DIR, sname)
+fig_dir(sname) = joinpath(InLP.CACHE_DIR, sname, "figures")
+dat_dir(sname) = joinpath(InLP.CACHE_DIR, sname, "dat")
 function make_dirs(sname)
     fdir = fig_dir(sname)
     ddir = dat_dir(sname)
@@ -109,10 +109,15 @@ let
     push_frec = 10
     dead_th = 1e-2
 
-    ϵs = collect(0.1:0.1:1.0) |> sort
-    Ds = [0.0; 0.001:0.001:0.015; 10.0.^-(1.6:0.07:2.2)] |> unique |> sort
-    Vls = [0.0, 0.1] |> sort
-    τs = [0.0, 0.0022] |> sort
+    # Test
+    # ϵs = collect(0.1:0.1:1.0) |> sort
+    ϵs = [0.01] |> sort
+    # Ds = [0.0; 0.001:0.001:0.015; 10.0.^-(1.6:0.07:2.2)] |> unique |> sort
+    Ds = [0.0; 0.001:0.001:0.015] |> unique |> sort
+    # Vls = [0.0, 0.1] |> sort
+    Vls = [0.0]
+    # τs = [0.0, 0.0022] |> sort
+    τs = [0.0] |> sort
     
     for D in Ds, ϵ in ϵs, Vl in Vls, τ in τs
 
@@ -150,9 +155,6 @@ let
         InLP.run_simulation!(M; on_iter, verbose = true, force = false)
     end
 end
-
-## ----------------------------------------------------------------------------
-sname = "LP_Implementation__2020-12-21T18:15:16.132" # Test
 
 ## ----------------------------------------------------------------------------
 # Collecting Bundle

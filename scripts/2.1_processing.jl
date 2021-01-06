@@ -34,57 +34,38 @@ varinfo(Main, r"DAT")
 ## ----------------------------------------------------------------------------
 # Find beta
 let
-    Vl, D, ϵ = DAT[:Vls][1], DAT[:Ds][5], DAT[:ϵs][1]
+    Vl, D, ϵ = DAT[:Vls][1], DAT[:Ds][5], DAT[:ϵs][3]
     M = DAT[:M, Vl, D, ϵ]
+    LP_cache = InLP.vgvatp_cache(M)
     DyMs = DAT[:DyM, Vl, D, ϵ]
     
     # Maxent
     δ = 0.05 # discretization factor
     y = abs(M.net.S[2, 6]) # atp/biomass yield
-    maxentf(beta) = (vatp, vg) -> exp(beta*vatp/y) + 0.003
+    maxentf(beta) = (vatp, vg) -> exp(beta*vatp/y)
     
     # # Gradient descent
     biom_ider = "biom"
     target = InLP.marginal_av(DyMs[biom_ider]) # dynamic mean
-    x0 = 1e2
-    x1 = 2e2
+    x0 = 5e3
+    x1 = 5.5e3
     maxΔ = 3e2
     th = 1e-3
     gd_xs = []
     gd_ys = []
-    maxiters = 15
+    maxiters = 5000
     beta0 = InU.grad_desc(;target, x0, x1, maxΔ, th, maxiters) do beta
-        MEMs = InLP.get_marginals(maxentf(beta), M, [biom_ider]; δ, verbose = false)
+        MEMs = InLP.get_marginals(maxentf(beta), M, [biom_ider]; δ, verbose = false, LP_cache)
         f = InLP.marginal_av(MEMs[biom_ider])
     end
     
-    MEMs = InLP.get_marginals(maxentf(beta0), M, [biom_ider]; δ, verbose = false)
+    MEMs = InLP.get_marginals(maxentf(beta0), M, [biom_ider]; δ, verbose = false, LP_cache)
 
     p1 = InLP.plot_marginals(DyMs, [biom_ider])
     p2 = InLP.plot_marginals(MEMs, [biom_ider])
     plot(p1, p2)
 end
 
-## ----------------------------------------------------------------------------
-let
-    f(x) = x^3 - 10.0 * x + 24
-
-    target = 1.0
-    x0 = 0.0
-    x1 = 0.01
-    gd_xs = []
-    gd_ys = []
-    xtarget = InU.grad_desc(;target, x0, x1, maxΔ = 1e-4, th = 1e-3) do x
-        y = f(x)
-        push!(gd_xs, x); push!(gd_ys, y)
-        y
-    end
-
-    p = plot()
-    scatter!(p, gd_xs, gd_ys; label = "gd", alpha = 0.7)
-    plot!(p, gd_xs, f.(gd_xs); label = "real", ls = :solid, alpha = 0.7)
-    p
-end
 ## ----------------------------------------------------------------------------
 # _vs_time_vs_ϵ_vs_D
 let
@@ -160,7 +141,7 @@ end
 # marginals
 let
     
-    f = indentity
+    f = identity
     Ds =  DAT[:Ds][1:6]
     Vl = DAT[:Vls] |> first
     
