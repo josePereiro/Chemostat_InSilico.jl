@@ -910,9 +910,9 @@ uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 
 [[UtilsJL]]
 deps = ["BSON", "Colors", "Dates", "Distributed", "DrWatson", "FileIO", "FixedPointNumbers", "Images", "Logging", "PkgTemplates", "Plots", "Printf", "Serialization", "SparseArrays"]
-path = "/Users/Pereiro/.julia/dev/UtilsJL"
+git-tree-sha1 = "422ba3ecf123530a0d7c5683db16ff207a38b262"
 uuid = "1d417f3e-fd42-11ea-18da-dda57c9b97b2"
-version = "0.4.5"
+version = "0.4.6"
 
 [[Wayland_jll]]
 deps = ["Artifacts", "Expat_jll", "JLLWrappers", "Libdl", "Libffi_jll", "Pkg", "XML2_jll"]
