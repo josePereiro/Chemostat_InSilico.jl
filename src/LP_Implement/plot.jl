@@ -70,8 +70,8 @@ function plot_marginals(marginals, rxns = keys(marginals))
             p = plot(;title = rxn, params...)
             plot!(p, marginal; label = "", color = :red, alpha = 0.9, lw = 3, ylim = [0.0, Inf])
 
-            av = marginal_av(marginal)
-            std = sqrt(marginal_va(marginal))
+            av = av(marginal)
+            std = sqrt(va(marginal))
 
             vline!(p, [av]; label = "", alpha = 0.8, lw = 2, ls = :dash, color = :black)
             vline!(p, [av - std]; label = "", alpha = 0.6, lw = 2, ls = :dot, color = :black)

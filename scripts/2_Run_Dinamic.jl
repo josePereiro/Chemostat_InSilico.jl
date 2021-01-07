@@ -111,7 +111,7 @@ DAT = UJL.DictTree() # To Store relevant information
     savefig_frec = 1000
     savedat_frec = 1000
     push_frec = 10
-    dead_th = DAT[:dead_th] = 1e-2
+    death_th = DAT[:death_th] = 1e-2
 
     # Test
     ϵs = [0.02:0.02:0.1; 0.2:0.1:1.0]
@@ -144,7 +144,7 @@ DAT = UJL.DictTree() # To Store relevant information
             end
             
             # cells die
-            dead = M.X < dead_th
+            dead = M.X < death_th
 
             # finish
             finish = dead || stst || it == M.niters
@@ -190,4 +190,4 @@ varinfo(Main, r"DAT")
 
 ## ----------------------------------------------------------------------------
 # SAVING
-UJL.save_data(InCh.CH3_DAT_BUNDLE_FILE, DAT)
+UJL.save_data(InCh.DYN_DATA_BUNDLE_FILE, DAT)

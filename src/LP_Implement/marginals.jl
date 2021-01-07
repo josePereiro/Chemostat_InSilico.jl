@@ -59,5 +59,5 @@ function get_marginals(f::Function, M::SimModel, rxns = M.net.rxns; verbose = tr
     return marginals
 end
 
-marginal_av(marginal) = sum(p * v for (v, p) in marginal)
-marginal_va(marginal) = (μ = marginal_av(marginal); sum(p * ((v - μ)^2) for (v, p) in marginal))
+av(marginal) = sum(p * v for (v, p) in marginal)
+va(marginal) = (μ = av(marginal); sum(p * ((v - μ)^2) for (v, p) in marginal))

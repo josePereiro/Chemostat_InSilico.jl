@@ -2,6 +2,9 @@
 # TODO: echenolize model
 
 const ABS_MAX_BOUND = 1000.0 # abs bound
+const BIOMASS_IDER = "biom"
+const Y = 348 
+
 struct MetNet
 
     ## LP (original) 
@@ -25,7 +28,7 @@ function ToyModel()
     # Fernandez-de-Cossio-Diaz, Jorge, Roberto Mulet, and Alexei Vazquez. (2019) https://doi.org/10.1038/s41598-019-45882-w.
     Nf = 2.0
     Nr = 38.0
-    y = -348      # mmol/gDW
+    y = -Y        # mmol/gDW
     Vr = 0.45     # mmol/gDW h
     ATPM = 1.0625 # mmol/gDW h
     Vg = 0.5      # mmol/gDW h
@@ -43,7 +46,7 @@ function ToyModel()
     net[:b] =    [0.0, 0.0, 0.0, 0.0, 0.0] # const exchanges
     
     AB = ABS_MAX_BOUND
-    net[:rxns] = [ "gt"  , "ferm" , "resp" , "ldh" ,  "lt" ,    "biom"    , "atpm" , "vatp" ];
+    net[:rxns] = [ "gt"  , "ferm" , "resp" , "ldh" ,  "lt" , BIOMASS_IDER , "atpm" , "vatp" ];
     net[:lb]   = [ 0.0   ,  0.0   ,  0.0   ,  0.0  ,  -AB  ,     0.0      ,  ATPM  ,  0.0   ];
     net[:ub]   = [  Vg   ,  AB    ,   Vr   ,  AB   ,   0.0 ,      AB      ,   AB   ,  AB    ];
     net[:c]    = [ 0.0   ,  0.0   ,  0.0   ,  0.0  ,   0.0 ,  MAX_SENSE   ,   0.0  ,  0.0   ];
