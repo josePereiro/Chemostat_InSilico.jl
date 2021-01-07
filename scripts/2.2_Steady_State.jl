@@ -27,7 +27,7 @@ end
 # Meta
 fileid = "2.2"
 fig_path(fname) = joinpath(InLP.DYN_FIGURES_DIR, fname)
-minmax(a::Vector) = (minimum(a), maximum(a))
+minmax(a) = isempty(a) ? (0.0, 0.0) : (minimum(a), maximum(a))
 
 ## ----------------------------------------------------------------------------
 # Load and clear DAT
@@ -60,10 +60,6 @@ let
     sort!(unique!(DAT[:ϵs]))
 end
 
-# ----------------------------------------------------------------------------
-# Globals
-δ = DAT[:δ] = 0.08 # marginal discretization factor
-
 ## ----------------------------------------------------------------------------
 # Modeling mode
 # Use Michaelis-Menden
@@ -78,23 +74,27 @@ end
 function prepare_net_stst!(M, xi = M.X / M.D)
     net = M.net
     # ub < max(V, c/ xi) see cossio's paper
-    net.ub[M.vg_idx] = max(net.lb[M.vg_idx], max(M.Vg , M.cg / xi))
-    net.ub[M.vl_idx] = max(net.lb[M.vl_idx], max(M.Vl , M.cl / xi))
+    net.ub[M.vg_idx] = max(net.lb[M.vg_idx], min(M.Vg , M.cg / xi))
+    net.ub[M.vl_idx] = max(net.lb[M.vl_idx], min(M.Vl , M.cl / xi))
     net
 end
 
 ## ----------------------------------------------------------------------------
-# TO DELETE, fix UtilsJL dep
-# Base.get(pd::UJL.DictTree, defl, k, ks...) = haskey(pd, k, ks...) ? pd[k, ks...] : defl
-
-## ----------------------------------------------------------------------------
 # COMPUTE MARGINALS
 let
-    for Vl in DAT[:Vls], D in DAT[:Ds], ϵ in DAT[:ϵs]
 
+    δ = DAT[:δ] = 0.08 # marginal discretization factor
+
+    N = sum(length.(DAT[[:Vls, :Ds, :ϵs]]))
+    c = 0
+    
+    for Vl in DAT[:Vls], D in DAT[:Ds], ϵ in DAT[:ϵs]
+        c += 1
+
+        !haskey(DAT, :M, Vl, D, ϵ) && continue
         M0, TS = DAT[[:M, :TS], Vl, D, ϵ]
         LP_cache = InLP.vgvatp_cache(M0)
-        @info "Doing" Vl D ϵ M0.X
+        @info "Doing $c/$N ... " Vl D ϵ M0.X
 
         ## ----------------------------------------------------------------------------
         # Dynamic marginal
@@ -105,16 +105,15 @@ let
         # MaxEnt marginals
         for (prep_mod, prep_fun!) in [
                                     (:dym, prepare_net_dym!),
-                                    (:stst, prepare_net_dym!),
+                                    (:stst, prepare_net_stst!),
                                 ]
 
-            MEM_sym = Symbol(string("MEM", prep_mod))
+            MEMsym = Symbol(string("MEM", prep_mod))
             
+            # Setup network
             M = deepcopy(M0)
             xi = M.X / D
-
-            # Setup network
-            net = prep_fun!(M, xi)
+            prep_fun!(M, xi)
 
             # MaxEnt fun
             y = InLP.Y # atp/biomass yield
@@ -123,139 +122,248 @@ let
             # # Gradient descent
             biom_ider = InLP.BIOMASS_IDER
             target = InLP.av(DyMs[biom_ider]) # biomass dynamic mean
-            x0 = get(DAT, 1e3, MEM_sym, :beta0, Vl, D, ϵ) 
-            x1 = x0 * 1.1
-            maxΔ = x0 * 0.5
+            x1 = get(DAT, 5e2, MEMsym, :beta0, Vl, D, ϵ) 
+            x0 = x1 * 0.9
+            maxΔ = x1 * 0.5
             th = 1e-3
-            maxiters = 50
+            maxiters = 500
             # Dynamic caching
             beta0 = InU.grad_desc(;target, x0, x1, maxΔ, th, maxiters) do beta
                 MEMs = InLP.get_marginals(maxentf(beta), M, [biom_ider]; 
                     δ, verbose = false, LP_cache)
                 f = InLP.av(MEMs[biom_ider])
             end
-            DAT[MEM_sym, :beta0, Vl, D, ϵ] = beta0
-            DAT[MEM_sym, Vl, D, ϵ] = InLP.get_marginals(maxentf(beta0), M; δ, LP_cache)
+            DAT[MEMsym, :beta0, Vl, D, ϵ] = beta0
+            DAT[MEMsym, Vl, D, ϵ] = InLP.get_marginals(maxentf(beta0), M; δ, LP_cache)
+
+            # Ranges
+            vatp_range, vg_ranges = InLP.vatpvg_ranges(M)
+            DAT[MEMsym, :ranges, Vl, D, ϵ] = (;vatp_range, vg_ranges)
         end
-            
+        println()
     end
 end
 
 
-#  ----------------------------------------------------------------------------
+## ----------------------------------------------------------------------------
 # PLOTS
+P = Dict()
+
+## ----------------------------------------------------------------------------
+# Bound Correlation
+let
+    f(x) = x
+    p = plot(;title = "Bounds Correlation", xlabel = "dym bound", ylabel = "stst bound")
+    l, u = Inf, -Inf
+    for Vl in DAT[:Vls], D in DAT[:Ds], ϵ in DAT[:ϵs]
+
+        !haskey(DAT, :M, Vl, D, ϵ) && continue
+        M0 = DAT[:M, Vl, D, ϵ]
+        xi = M0.X / D
+
+        vgubs = []
+        vlubs = []
+        for (MEMsym, prep_fun!) in [
+                                    (:MEMdym, prepare_net_dym!),
+                                    (:MEMstst, prepare_net_stst!),
+                                ]
+
+            M = deepcopy(M0)
+            InLP.fill_board!(M.Xb, 1.0)
+            net = prep_fun!(M, xi)
+            push!(vgubs, net.ub[M.vg_idx])
+            push!(vlubs, net.ub[M.vl_idx])
+
+        end
+        xs = first.([vgubs, vlubs])
+        ys = last.([vgubs, vlubs])
+        l = minimum([l; xs; ys])            
+        u = maximum([u; xs; ys])            
+        scatter!(p, f.(xs), f.(ys); alpha = 0.5, color = :black, label = "")
+
+    end
+    plot!(p, f.([l, u]), f.([l, u]); label = "", ls = :dash, alpha = 0.8)
+
+    # saving
+    pname = UJL.mysavename("bounds_corr", "png")
+    P[pname] = deepcopy(p)
+    fname = fig_path(string(fileid, "_", pname))    
+    savefig(p, fname)
+    @info "Plotting" fname
+
+end
 
 ## ----------------------------------------------------------------------------
 # state_vs_D
 let
     f(x) = x
-
+    
     for Vl in DAT[:Vls], ϵ in DAT[:ϵs]
 
-
         p = plot(;title = "", 
-            xlabel = "flx (Dynamic)", ylabel = "flx (MaxEnt)")
+            xlabel = "D", ylabel = "X")
 
-        DT = UJL.DictTree()
-        for D in DAT[:Ds]
+        Ds = filter((D) -> haskey(DAT, :M, Vl, D, ϵ), DAT[:Ds])
+        Ms = DAT[:M, Vl, Ds, ϵ]
 
-            M = DAT[:M, Vl, D, ϵ]
-            DyMs = DAT[:DyM, Vl, D, ϵ]
-            MEMs = DAT[:MEMs, Vl, D, ϵ]
-            beta0 = DAT[:beta0, Vl, D, ϵ]
-            isnan(beta0) && continue # leave out deaths
+        # Dynamic
+        plot!(p, getfield.(Ms, :D), getfield.(Ms, :X), label = "")
+            
+        # MaxEnt
+        for MEMsym in [:MEMdym, :MEMstst]
 
-            for rxn in M.net.rxns
-                #
+            xis = getfield.(Ms, :X) ./ Ds
+            MEMss = DAT[MEMsym, Vl, Ds, ϵ]
+            
+            PD = UJL.DictTree()
+            for D in DAT[:Ds]
+
+                !haskey(DAT, :M, Vl, D, ϵ) && continue
+                M = DAT[:M, Vl, D, ϵ]
+                DyMs = DAT[:DyMs, Vl, D, ϵ]
+                MEMs = DAT[MEMsym, Vl, D, ϵ]
+
+                for rxn in M.net.rxns
+                    
+                end
+
             end
 
         end
 
         # saving
-        pname = UJL.mysavename("Dy_ME_total_correlation", "png")
+        pname = UJL.mysavename("Steady_State_X_vs_D", "png"; Vl, ϵ)
         fname = fig_path(string(fileid, "_", pname))    
         savefig(p, fname)
         @info "Plotting" fname
     end
 end
 
+
 ## ----------------------------------------------------------------------------
 # plot marginals
 let
     for Vl in DAT[:Vls], D in DAT[:Ds], ϵ in DAT[:ϵs]
+        
+        ps = Dict()
 
-        M, TS = DAT[[:M, :TS], Vl, D, ϵ]
-        DyMs = DAT[:DyM, Vl, D, ϵ]
-        MEMs = DAT[:MEMs, Vl, D, ϵ]
-        beta0 = DAT[:beta0, Vl, D, ϵ]
-        isnan(beta0) && continue # leave out deaths
+        !haskey(DAT, :M, Vl, D, ϵ) && continue
+        M = DAT[:M, Vl, D, ϵ]
+        DyMs = DAT[:DyMs, Vl, D, ϵ]
 
-        ps = []
-        gparams = (;xlabel = "flx", ylabel = "prob", 
-            xaxis = nothing, yaxis = nothing, grid = false, 
-            titlefont = 10, xaxisfont = 10)
         sparams =(;alpha = 0.8, lw = 3, ylim = [0.0, Inf])
+        gparams = (xaxis = nothing, yaxis = nothing, grid = false, 
+                titlefont = 10, xaxisfont = 10)
+
         for rxn in M.net.rxns
-            DyM = DyMs[rxn]
-            MEM = MEMs[rxn]
-            
-            try
-                p = plot(;title = rxn, gparams...)
-                plot!(p, DyM; label = "", color = :red, sparams...)
-                plot!(p, MEM; label = "", color = :blue, sparams...)
-                push!(ps, p)
-            catch err 
-                @error string("Doing $rxn\n", UJL.err_str(err))
-            end
+            p = ps[rxn] = plot(;title = rxn, xlabel = "flx", ylabel = "prob", gparams...)
+            plot!(p, DyMs[rxn]; label = "", color = :black, sparams...)
         end
+
+        ps[:pol] = plot(;title = "polytope", xlabel = "vatp", ylabel = "vg", gparams...)
+        for (MEMsym, color) in [(:MEMdym, :red), (:MEMstst, :blue)]
+
+            MEMs = DAT[MEMsym, Vl, D, ϵ]
+            # beta0 = DAT[MEMsym, :beta0, Vl, D, ϵ]
+
+            # Marginals
+            for rxn in M.net.rxns
+                try
+                    plot!(ps[rxn], MEMs[rxn]; label = "", color = color, sparams...)
+                catch err 
+                    @error string("Doing $rxn\n", UJL.err_str(err))
+                end
+            end
+
+            # Polytopes
+            vatp_range, vg_ranges = DAT[MEMsym, :ranges, Vl, D, ϵ] 
+            vatps, vgLs, vgUs = [], [], []
+            for (vatpi, vatp) in enumerate(vatp_range)
+                vg_range = vg_ranges[vatpi]
+                isempty(vg_range) && continue
+                vgL, vgU = minmax(vg_range)
+                push!(vatps, vatp)
+                push!(vgLs, vgL)
+                push!(vgUs, vgU)
+            end
+            plot!(ps[:pol], [vatps], [vgLs]; label = "", color, sparams...)
+            plot!(ps[:pol], [vatps], [vgUs]; label = "", color, sparams...)
+
+        end # for (MEMsym, color)
+
+
+        ps = [[ps[rxn] for rxn in M.net.rxns]; ps[:pol]]
         p = plot(ps...; layout = length(ps))
 
         # saving
-        pname = UJL.mysavename("marginals", "png"; Vl, D, ϵ, beta0)
+        pname = UJL.mysavename("Dyn_marginals", "png"; Vl, D, ϵ)
         fname = fig_path(string(fileid, "_", pname))    
         savefig(p, fname)
         @info "Plotting" fname
 
-    end
+    end # for Vl in DAT[:Vls], D in DAT[:Ds], ϵ in DAT[:ϵs]
 end
 
 ## ----------------------------------------------------------------------------
 # Steady State EP Dynamic correlation
 let
     f(x) = x
-    p = plot(;title = "Total Correlation", 
-        xlabel = "flx (Dynamic)", ylabel = "flx (MaxEnt)")
-    l, u = Inf, -Inf
-    @showprogress for Vl in DAT[:Vls], D in DAT[:Ds], ϵ in DAT[:ϵs]
 
-        M, TS = DAT[[:M, :TS], Vl, D, ϵ]
-        DyMs = DAT[:DyM, Vl, D, ϵ]
-        MEMs = DAT[:MEMs, Vl, D, ϵ]
-        beta0 = DAT[:beta0, Vl, D, ϵ]
-        isnan(beta0) && continue # leave out deaths
+    for MEMsym in [:MEMdym, :MEMstst]
 
-        for rxn in M.net.rxns
-            rxn == "atpm" && continue
-            DyAv = InLP.av(DyMs[rxn])
-            DyStd = sqrt(InLP.va(DyMs[rxn]))
-            MEAv = InLP.av(MEMs[rxn])
-            MEStd = sqrt(InLP.va(MEMs[rxn]))
+        p = plot(;title = "Total Correlation", 
+            xlabel = "flx (Dynamic)", ylabel = "flx (MaxEnt)")
+        
+        # l, u = Inf, -Inf
 
-            scatter!(p, f.([DyAv]), f.([MEAv]); xerr = f.([DyStd]), yerr = f.([MEStd]),
-                alpha = 0.5, color = :black, label = "")
+        PD = UJL.DictTree()
+        @showprogress for Vl in DAT[:Vls], D in DAT[:Ds], ϵ in DAT[:ϵs]
 
-            l = minimum([l, DyAv, MEAv])            
-            u = maximum([u, DyAv, MEAv])            
-            isnan(l) && @show rxn, l, DyAv, MEAv
-            isnan(u) && @show rxn, u, DyAv, MEAv
+            !haskey(DAT, :M, Vl, D, ϵ) && continue
+            M, TS = DAT[[:M, :TS], Vl, D, ϵ]
+            DyMs = DAT[:DyMs, Vl, D, ϵ]
+            MEMs = DAT[MEMsym, Vl, D, ϵ]
+            beta0 = DAT[MEMsym, :beta0, Vl, D, ϵ]
+            isnan(beta0) && continue # leave out deaths
+
+            for rxn in M.net.rxns
+                rxn in ["atpm", "vatp"] && continue
+                DyAv = InLP.av(DyMs[rxn])
+                DyStd = sqrt(InLP.va(DyMs[rxn]))
+                MEAv = InLP.av(MEMs[rxn])
+                MEStd = sqrt(InLP.va(MEMs[rxn]))
+
+                foreach([:MEAv, :MEStd, :DyAv, :DyStd]) do id 
+                    get!(PD, [], rxn, id)
+                end
+
+                push!(PD[rxn, :MEAv], MEAv)
+                push!(PD[rxn, :MEStd], MEStd)
+                push!(PD[rxn, :DyAv], DyAv)
+                push!(PD[rxn, :DyStd], DyStd)
+
+                # l = minimum([l, DyAv, MEAv])            
+                # u = maximum([u, DyAv, MEAv])            
+            end
         end
+
+        # scatter!(p, f.([DyAv]), f.([MEAv]); xerr = f.([DyStd]), yerr = f.([MEStd]),
+        #             alpha = 0.5, color = :white, label = "", ms = 8)
+
+        for rxn in keys(PD)
+            norm = maximum(abs.(PD[rxn, :DyAv]))
+            scatter!(p, PD[rxn, :DyAv] ./ norm, PD[rxn, :MEAv] ./ norm; 
+                    # xerr = PD[rxn, :DyStd] ./ norm, yerr = PD[rxn, :MEStd] ./ norm,
+                    alpha = 0.5, label = "", ms = 8)
+        end
+
+        # plot!(p, f.([l, u]), f.([l, u]); label = "", ls = :dash, alpha = 0.8)
+        plot!(p, [-1.0, 1.0], [-1.0, 1.0]; label = "", ls = :dash, alpha = 0.8)
+
+        # saving
+        pname = UJL.mysavename("Dyn_$(MEMsym)_flx_corr", "png")
+        fname = fig_path(string(fileid, "_", pname))    
+        savefig(p, fname)
+        @info "Plotting" fname
     end
-
-    plot!(p, f.([l, u]), f.([l, u]); label = "", ls = :dash, alpha = 0.8)
-
-    # saving
-    pname = UJL.mysavename("Dy_ME_total_correlation", "png")
-    fname = fig_path(string(fileid, "_", pname))    
-    savefig(p, fname)
-    @info "Plotting" fname
 end

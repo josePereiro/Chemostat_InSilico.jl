@@ -81,7 +81,7 @@ end
 
 ## ---------------------------------------------------------
 # Simulation 
-sname = sim_name("LP_Implementation")
+sname = sim_name("Dyn")
 DAT = UJL.DictTree() # To Store relevant information
 @time let
     # setup
@@ -114,12 +114,14 @@ DAT = UJL.DictTree() # To Store relevant information
     death_th = DAT[:death_th] = 1e-2
 
     # Test
-    ϵs = [0.02:0.02:0.1; 0.2:0.1:1.0]
-    Ds = [0.0; 0.001:0.001:0.015; 10.0.^-(1.6:0.1:2.2)] |> unique |> sort
+    # ϵs = [0.02:0.02:0.1; 0.2:0.1:1.0]
+    ϵs = [0.1, 0.2, 0.3]
+    # Ds = [0.0; 0.001:0.001:0.015; 10.0.^-(1.6:0.1:2.2)] |> unique |> sort
+    Ds = [0.006918309709189363, 0.008128305161640995, 0.009549925860214359, 0.011220184543019636]
     # Vls = [0.0, 0.1]
     Vls = [0.0]
     # τs = [0.0, 0.0022]
-    τs = [0.0] |> sort
+    τs = [0.0] 
     
     c = 1
     N = prod(length.([ϵs, Ds, Vls, τs]))

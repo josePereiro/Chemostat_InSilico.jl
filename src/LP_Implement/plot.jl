@@ -88,6 +88,7 @@ end
 function plot_politope(M::SimModel; 
         hits_count = 3000,
         maxiters = 100 * hits_count,
+        pkwargs...
     )
     
     vatp_range, vg_ranges = vatpvg_ranges(M)
@@ -113,5 +114,5 @@ function plot_politope(M::SimModel;
         scatter!(p, [vatp], [vg]; color, label = "", ms, alpha = 0.2)
         hits += 1
     end
-    p
+    plot!(p; pkwargs...)
 end

@@ -21,3 +21,11 @@ function complete_board!(Xb, i_vatp_range, vg_ranges, deflt)
     end
     Xb
 end
+
+function fill_board!(Xb, v0)
+    for (vatp, lX) in Xb
+        for (vg, _) in lX
+            lX[vg] = v0
+        end
+    end
+end
