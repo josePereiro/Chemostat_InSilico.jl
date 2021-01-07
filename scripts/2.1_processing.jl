@@ -38,17 +38,15 @@ varinfo(Main, r"DAT")
 ## ----------------------------------------------------------------------------
 # Compute marginals
 let
-    δ = DAT[:δ]
-    dead_th = DAT[:dead_th]
+    δ = DAT[:δ] = 0.08
     
-    # Vl, D, ϵ = DAT[:Vls][1], DAT[:Ds][6], DAT[:ϵs][1]
     for Vl in DAT[:Vls], D in DAT[:Ds], ϵ in DAT[:ϵs]
 
         M, TS = DAT[[:M, :TS], Vl, D, ϵ]
         LP_cache = InLP.vgvatp_cache(M)
         @info "Doing" Vl D ϵ M.X
 
-        if M.X > dead_th # Check dead
+        if M.X > DAT[:dead_th] # Check dead
 
             # Dynamic marginal
             f(vatp, vg) = M.Xb[vatp][vg] / M.X
@@ -66,15 +64,18 @@ let
             maxΔ = 6e2
             th = 1e-3
             maxiters = 500
-            beta0 = InU.grad_desc(;target, x0, x1, maxΔ, th, maxiters) do beta
-                MEMs = InLP.get_marginals(maxentf(beta), M, [biom_ider]; δ, verbose = false, LP_cache)
-                f = InLP.marginal_av(MEMs[biom_ider])
+            if !haskey(DAT, :beta0, Vl, D, ϵ) 
+                beta0 = InU.grad_desc(;target, x0, x1, maxΔ, th, maxiters) do beta
+                    MEMs = InLP.get_marginals(maxentf(beta), M, [biom_ider]; δ, verbose = false, LP_cache)
+                    f = InLP.marginal_av(MEMs[biom_ider])
+                end
+                DAT[:beta0, Vl, D, ϵ] = beta0
+            else
+                beta0 = DAT[:beta0, Vl, D, ϵ]
             end
-            DAT[:beta0, Vl, D, ϵ] = beta0
             DAT[:MEMs, Vl, D, ϵ] = InLP.get_marginals(maxentf(beta0), M; δ, LP_cache)
             
         else
-
             # Empty marginals
             DAT[:beta0, Vl, D, ϵ] = NaN
             DAT[:MEMs, Vl, D, ϵ] = Dict(rxn => Dict(0.0 => 0.0) for rxn in M.net.rxns)
@@ -82,6 +83,9 @@ let
         end
     end
 end
+
+## ----------------------------------------------------------------------------
+UJL.save_data(DAT_FILE, DAT)
 
 ## ----------------------------------------------------------------------------
 # plot marginals
@@ -92,7 +96,7 @@ let
         DyMs = DAT[:DyM, Vl, D, ϵ]
         MEMs = DAT[:MEMs, Vl, D, ϵ]
         beta0 = DAT[:beta0, Vl, D, ϵ]
-        isnan(beta0) && continue
+        isnan(beta0) && continue # leave out deaths
 
         ps = []
         gparams = (;xlabel = "flx", ylabel = "prob", 
@@ -159,7 +163,15 @@ let
 end
 
 ## ----------------------------------------------------------------------------
-# Steady state_vs_D 
+# EP Dynamic correlation
+let
+    for Vl in DAT[:Vls], D in DAT[:Ds], ϵ in DAT[:ϵs]
+        
+    end
+end
+
+## ----------------------------------------------------------------------------
+# Steady state_vs_D Dynamic
 let
     f = identity
     Ds = DAT[:Ds][1:8]
