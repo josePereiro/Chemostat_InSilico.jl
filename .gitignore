@@ -1,5 +1,6 @@
 .vscode
 dev/
+cluster/
 data/
 log.txt
 figures/
