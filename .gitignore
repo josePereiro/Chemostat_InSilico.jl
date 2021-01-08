@@ -1,3 +1,4 @@
+.vscode
 dev/
 data/
 log.txt
@@ -76,3 +77,5 @@ Temporary Items
 .apdisk
 
 # End of https://www.toptal.com/developers/gitignore/api/julia,macos,linux
+
+.vscode/spellright.dict

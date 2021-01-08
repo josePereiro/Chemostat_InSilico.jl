@@ -2,6 +2,7 @@ import DrWatson: quickactivate
 quickactivate(@__DIR__, "Chemostat_InSilico")
 
 @time begin
+
     import Chemostat_InSilico
     const InCh = Chemostat_InSilico
     const InLP = InCh.LP_Implement
@@ -22,18 +23,19 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
     using Dates
     using Statistics
     using InteractiveUtils
+
 end
 
 ## ---------------------------------------------------------
 # Tools
-sim_name(name; sim_params...) = string(InLP.mysavename(name, ""; sim_params...), "__", now())
-fig_dir(sname) = joinpath(InLP.CACHE_DIR, sname, "figures")
-dat_dir(sname) = joinpath(InLP.CACHE_DIR, sname, "dat")
-function make_dirs(sname)
-    fdir = fig_dir(sname)
-    ddir = dat_dir(sname)
-    mkpath.([fdir, ddir])
-end
+PROG_FIG_DIR = joinpath(InLP.DYN_FIGURES_DIR, "progress")
+CACHE_DIR = InLP.DYN_CACHE_DIR
+dat_file(;sim_params...) = joinpath(CACHE_DIR, 
+    InLP.mysavename("dyn_dat", "jls"; sim_params...))
+fig_file(;sim_params...) = joinpath(PROG_FIG_DIR, 
+    InLP.mysavename("fig", "png"; sim_params...))
+
+make_dirs() = mkpath.([PROG_FIG_DIR, CACHE_DIR])
 
 function check_stst(ts; w = 1000, th = 0.05)
     @views for sym in [:X_ts, :sl_ts, :sg_ts, :D_ts]
@@ -48,45 +50,13 @@ function check_stst(ts; w = 1000, th = 0.05)
     return true
 end
 
-function push_plot_save(M, TS, it; 
-        sname, sim_params,
-        push_frec = 10,
-        savefig_frec = 100,
-        savedat_frec = 1000,
-        force = false
-    )
-
-    if it % push_frec == 0 || force
-        push!(TS, M)        
-    end
-
-    # save fig
-    save_fig = it == 1 || rem(it, savefig_frec) == 0 || it == M.niters || force
-    if save_fig
-        fname = InLP.mysavename("fig", "png"; it, sim_params...)
-        fpath = joinpath(fig_dir(sname), fname)
-        p = InLP.plot_res(M, TS)
-        savefig(p, fpath)
-
-    end
-
-    # save data
-    save_dat = rem(it, savedat_frec) == 0 || it == M.niters || force
-    if save_dat
-        fname = InLP.mysavename("tot_dat", "jls"; sim_params...)
-        fpath = joinpath(dat_dir(sname), fname)
-        serialize(fpath, (;TS, M))
-    end
-end
-
 ## ---------------------------------------------------------
 # Simulation 
-sname = sim_name("Dyn")
 DAT = UJL.DictTree() # To Store relevant information
 @time let
     # setup
     
-    make_dirs(sname)
+    make_dirs()
 
     # base model
     M0 = InLP.SimModel(;
@@ -99,7 +69,7 @@ DAT = UJL.DictTree() # To Store relevant information
             Δt = 0.5,
         )
 
-    @info "Starting simulation" sname
+    @info "Starting simulation" now()
 
     # cache
     InLP.vgvatp_cache(M0)
@@ -113,11 +83,9 @@ DAT = UJL.DictTree() # To Store relevant information
     push_frec = 10
     death_th = DAT[:death_th] = 1e-2
 
-    # Test
-    # ϵs = [0.02:0.02:0.1; 0.2:0.1:1.0]
-    ϵs = [0.1, 0.2, 0.3]
-    # Ds = [0.0; 0.001:0.001:0.015; 10.0.^-(1.6:0.1:2.2)] |> unique |> sort
-    Ds = [0.006918309709189363, 0.008128305161640995, 0.009549925860214359, 0.011220184543019636]
+    # Params
+    ϵs = [0.01; 0.1:0.1:1.0]
+    Ds = [0.001:0.001:0.017;]
     # Vls = [0.0, 0.1]
     Vls = [0.0]
     # τs = [0.0, 0.0022]
@@ -126,37 +94,48 @@ DAT = UJL.DictTree() # To Store relevant information
     c = 1
     N = prod(length.([ϵs, Ds, Vls, τs]))
     @info "Computing $(N) iterations"
+    cfiles = Set([])
 
     for D in Ds, ϵ in ϵs, Vl in Vls, τ in τs
 
+        # Prepare simulation model
         M = deepcopy(M0)
         M.D, M.ϵ, M.Vl, M.τ = D, ϵ, Vl, τ
         TS = InLP.ResTS()
+        sim_params = (;M.D, M.ϵ, M.Δt, M.σ, M.τ, M.cg, M.Vl)
 
-        @info "Doing $c/$N ..." D ϵ Vl τ now()
+        @info "Doing $c/$N ..." D ϵ Vl τ now()s
+        
+        function on_iter(it, _)
 
-        function on_iter(it, M)
-
-            sim_params = (;M.D, M.ϵ, M.Δt, M.σ, M.τ, M.cg, M.Vl)
-
-            # stead state
-            stst = false
-            if rem(it, check_stst_frec) == 0
-                stst = check_stst(TS; w = stst_window, th = stst_th)
-            end
+            # check cache
+            cfile = dat_file(;sim_params...)
+            push!(cfiles, cfile)
+            cached = it == 1 && isfile(cfile)
+            cached && (TS, M = deserialize(cfile))
             
-            # cells die
-            dead = M.X < death_th
+            # check steady state
+            stst = rem(it, check_stst_frec) == 0 && 
+                check_stst(TS; w = stst_window, th = stst_th)
+            
+            # check cells die
+            death = M.X < death_th
 
             # finish
-            finish = dead || stst || it == M.niters
+            finish = death || stst || it == M.niters
 
-            # output
-            push_plot_save(M, TS, it; 
-                sname, sim_params,
-                push_frec, savefig_frec, savedat_frec,
-                force = finish
-            )
+            push_state = it % push_frec == 0 || finish
+            push_state && push!(TS, M)        
+
+            # save fig
+            save_fig = it == 1 || rem(it, savefig_frec) == 0 || 
+                it == M.niters || finish || !cached
+            save_fig && savefig(InLP.plot_res(M, TS), fig_file(;it, sim_params...))
+
+            # save data
+            save_dat = rem(it, savedat_frec) == 0 || it == M.niters || 
+                finish || !cached
+            save_dat && serialize(cfile, (;TS, M))
 
             return finish
         end
@@ -164,19 +143,12 @@ DAT = UJL.DictTree() # To Store relevant information
 
         c += 1
     end
-end
 
-## ----------------------------------------------------------------------------
-# Collecting Bundle
-let
-    ddir = dat_dir(sname) 
-    @assert isdir(ddir)
-
-    dfiles = readdir(ddir)
-    N  = length(dfiles)
-    for (i, file) in dfiles |> enumerate
-        TS, M = deserialize(joinpath(ddir, file))
-        @info "Doing $i/$N ... " M.D M.ϵ file; println()
+    ## ----------------------------------------------------------------------------
+    # Collecting and Bundle    
+    for (i, cfile) in enumerate(cfiles)
+        TS, M = deserialize(cfile)
+        @info "Doing $i/$N ... " M.D M.ϵ cfile; println()
         DAT[:TS, M.Vl, M.D, M.ϵ] = TS
         DAT[:M, M.Vl, M.D, M.ϵ] = M
 

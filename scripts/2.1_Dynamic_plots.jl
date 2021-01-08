@@ -27,6 +27,8 @@ end
 # Meta
 fileid = "2.1"
 fig_path(fname) = joinpath(InLP.DYN_FIGURES_DIR, fname)
+Base.first(v::Vector, i) = v[firstindex(v):(min(lastindex(v), i))]
+Base.last(v::Vector, i) = v[max(firstindex(v), length(v) - i + 1):lastindex(v)]
 
 ## ----------------------------------------------------------------------------
 # Load DAT
@@ -40,7 +42,7 @@ let
     
     marginf = 0.2
     f = identity
-    Ds = DAT[:Ds][1:6]
+    Ds = first(DAT[:Ds], 6)
     Vl = DAT[:Vls] |> first
 
     for field in [:X_ts, :sg_ts, :sl_ts]
@@ -73,7 +75,7 @@ end
 # Steady state_vs_D Dynamic
 let
     f = identity
-    Ds = DAT[:Ds][1:8]
+    Ds = first(DAT[:Ds], 8)
     Vl = DAT[:Vls] |> first
 
     for field in [:X, :sg, :sl]
@@ -95,9 +97,8 @@ end
 ## ----------------------------------------------------------------------------
 # marginals
 let
-    
     f = identity
-    Ds =  DAT[:Ds][1:6]
+    Ds =  first(DAT[:Ds], 6)
     Vl = DAT[:Vls] |> first
     
     write_lock = ReentrantLock()
@@ -145,7 +146,6 @@ let
         end
         
     end # for D in Ds
-
     
     # saving
     params = (;legend = false, titlefont = 10, axistitle = 10)
@@ -160,6 +160,29 @@ let
     fname = fig_path(string(fileid, "_", pname))
     savefig(p, fname)
     @info "Plotting" fname
+end
+
+## ----------------------------------------------------------------------------
+# dynamic state_vs_D
+let
+    f(x) = x
+    
+    for Vl in DAT[:Vls], ϵ in DAT[:ϵs]
+
+        p = plot(;title = "", xlabel = "D", ylabel = "X")
+
+        Ds = filter((D) -> haskey(DAT, :M, Vl, D, ϵ), DAT[:Ds])
+        Ms = DAT[:M, Vl, Ds, ϵ]
+
+        # Dynamic
+        plot!(p, getfield.(Ms, :D), getfield.(Ms, :X), label = "")
+
+        # saving
+        pname = UJL.mysavename("tot_dyn_stst_X_vs_D", "png"; Vl, ϵ)
+        fname = fig_path(string(fileid, "_", pname))    
+        savefig(p, fname)
+        @info "Plotting" fname
+    end
 end
 
 # ## ----------------------------------------------------------------------------
