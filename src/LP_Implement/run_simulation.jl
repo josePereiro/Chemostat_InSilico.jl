@@ -15,15 +15,21 @@ function run_simulation!(M::SimModel;
     # extract model constants
     Xb =  M.Xb
     vatp_idx, vg_idx, vl_idx, obj_idx = M.vatp_idx, M.vg_idx, M.vl_idx, M.obj_idx
-    Vg, Kg, Vl, Kl = M.Vg, M.Kg, M.Vl, M.Kl
+    cg, cl, Vg, Kg, Vl, Kl = M.cg, M.cl, M.Vg, M.Kg, M.Vl, M.Kl
     σ, τ, Δt = M.σ, M.τ, M.Δt
     
     ## ---------------------------------------------------------
     # update model
     function update_net!(net) 
-        net.ub[vg_idx] = max(net.lb[vg_idx], (Vg * M.sg) / (Kg + M.sg))
-        net.ub[vl_idx] = max(net.lb[vl_idx], (Vl * M.sl) / (Kl + M.sl))
+        ub1 = cg * M.D / M.X                # conservation of matter 
+        ub2 = (Vg * M.sg) / (Kg + M.sg)     # Michaelis-Menten dynamic
+        net.ub[vg_idx] = max(net.lb[vg_idx], min(ub1, ub2))
+
+        ub1 = cl * M.D / M.X                # conservation of matter 
+        ub2 = (Vl * M.sl) / (Kl + M.sl)     # Michaelis-Menten dynamic
+        net.ub[vl_idx] = max(net.lb[vl_idx], min(ub1, ub2))
     end
+    
     update_net!(M.net) 
     net_pool = map((i) -> deepcopy(M.net), 1:nthreads())
     all_nets = [M.net; net_pool]
