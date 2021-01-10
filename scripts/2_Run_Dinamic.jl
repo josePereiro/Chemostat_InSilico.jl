@@ -23,6 +23,7 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
     using Dates
     using Statistics
     using InteractiveUtils
+    using Random
 
 end
 
@@ -70,6 +71,8 @@ let
                 status, TS, M = deserialize(cfile)
                 p = InLP.plot_res(M, TS)
                 fname = replace(file, DATA_FILE_PREFFIX => "fig")
+                fname, _ = splitext(fname)
+                fname = string(fname, ".png")
                 ffile = joinpath(PROG_FIG_DIR, fname)
                 savefig(p, ffile)
                 mtimes[file] = ct
@@ -92,7 +95,7 @@ INDEX = UJL.DictTree() # To Store relevant information
     M0 = INDEX[:M0] = InLP.SimModel(;
             δvatp = 2, 
             δvg = 3, 
-            niters = Int(5e4),
+            niters = Int(1e4),
             X0 = 1.5,
             sg0 = 15.0,
             sl0 = 0.0,
@@ -108,7 +111,6 @@ INDEX = UJL.DictTree() # To Store relevant information
     stst_th = 0.05
     stst_window = 250
     check_stst_frec = 1000
-    savefig_frec = 1000
     savedat_frec = 1000
     info_frec = 100
     push_frec = 10
@@ -117,27 +119,25 @@ INDEX = UJL.DictTree() # To Store relevant information
     # Params
     # Vls = [0.0, 0.1]
     Vls = INDEX[:Vls] = [0.0]
-    Ds = INDEX[:Ds]= [0.003:0.003:0.018;]
+    Ds = INDEX[:Ds]= [0.003:0.003:0.027;]
     ϵs = INDEX[:ϵs] = [0.01, 0.1, 0.5]
     # τs = [0.0, 0.0022]
     τs = INDEX[:τs] = [0.0] 
     
-    c = 0 # progress counter
-    params = Iterators.product(Vls, Ds, ϵs, τs) |> collect
+    params = Iterators.product(Vls, Ds, ϵs, τs)
+    iparams = params |> enumerate |> collect |> shuffle!
     N = length(params)
     @info "Computing $(N) iterations"
 
     wlock = ReentrantLock()
-    @threads for (Vl, D, ϵ, τ) in params
+    @threads for (i, (Vl, D, ϵ, τ)) in iparams
 
         # This must identify the iteration
         sim_params = (;D, ϵ, τ, Vl, M0.Δt, M0.σ, M0.cg)
 
         # Say hello
-        tc = nothing # thread progress counter
         lock(wlock) do
-            tc = c += 1
-            @info "Starting $tc/$N ..." D ϵ Vl τ now() threadid()
+            @info "Starting $i/$N ..." D ϵ Vl τ now() threadid()
             println()
         end
         
@@ -147,7 +147,7 @@ INDEX = UJL.DictTree() # To Store relevant information
             status, TS, M = deserialize(cfile)
             tslen = length(TS.X_ts)
             lock(wlock) do
-                @info "cache loaded $tc/$N ... " M.X M.sl M.sg tslen status now() threadid()
+                @info "cache loaded $i/$N ... " M.X M.sl M.sg tslen status now() threadid()
                 println()
             end
         else
@@ -174,42 +174,33 @@ INDEX = UJL.DictTree() # To Store relevant information
             death = M.X < death_th
 
             # finish
-            finish = death || stst || it == M.niters
-            finish && (status = :finished)
+            finished = death || stst || it == M.niters
+            finished && (status = :finished)
 
-            push_state = it % push_frec == 0 || finish
+            push_state = it % push_frec == 0 || finished
             push_state && push!(TS, M)        
-
-            # # save fig
-            # save_fig = it == 1 || rem(it, savefig_frec) == 0 || 
-            #     it == M.niters || finish
-            # if save_fig
-            #     lock(wlock) do
-            #         savefig(InLP.plot_res(M, TS), fig_file(;tslen, sim_params...))
-            #     end
-            # end
 
             # save data
             save_dat = rem(it, savedat_frec) == 0 || 
-                it == M.niters || finish
-            serialize(cfile, (;status, TS, M))
-            touch(cfile) # plotting trigger
+                it == M.niters || finished
+            save_dat && serialize(cfile, (;status, TS, M))
+            save_dat && touch(cfile) # plotting trigger
                 
             # info and lock dat
-            show_info = rem(it, info_frec) == 0 || finish || save_dat
+            show_info = rem(it, info_frec) == 0 || finished || save_dat
             if show_info
                 lock(wlock) do
-                    @info "Doing $tc/$N ... " it M.X M.sl M.sg tslen status D ϵ Vl τ now() threadid()
+                    @info "Doing $i/$N ... " it M.X M.sl M.sg tslen status D ϵ Vl τ now() threadid()
                     println()
                 end
             end
 
-            return finish
+            return finished
         end
         InLP.run_simulation!(M; on_iter, verbose = false, force = false)
         
         lock(wlock) do
-            @info "Finished $tc/$N ... " tslen now() threadid()
+            @info "Finished $i/$N ... " tslen now() threadid()
             INDEX[:DFILE, Vl, D, ϵ, τ] = cfile
             println()
             GC.gc()
