@@ -29,6 +29,7 @@ end
 
 ## ---------------------------------------------------------
 # Tools
+const WLOCK = ReentrantLock()
 PROG_FIG_DIR = joinpath(InCh.DYN_FIGURES_DIR, "progress")
 DATA_DIR = InCh.DYN_DATA_DIR
 DATA_FILE_PREFFIX = "dyn_dat"
@@ -54,32 +55,41 @@ end
 
 ## ---------------------------------------------------------
 # Plot progress coroutine
-let
-    mtimes = Dict()
-    @async while true
+const MTIMES = Dict()
+function plot_progress(mtimes = MTIMES)
+    for file in readdir(DATA_DIR)
+        !startswith(file, DATA_FILE_PREFFIX) && continue
 
-        for file in readdir(DATA_DIR)
+        cfile = joinpath(DATA_DIR, file)
 
-            !startswith(file, DATA_FILE_PREFFIX) && continue
-            cfile = joinpath(DATA_DIR, file)
+        t = get!(mtimes, file, 0.0)
+        ct = mtime(cfile)
 
-            t = get!(mtimes, file, 0.0)
-            ct = mtime(cfile)
+        # save fig
+        if abs(t - ct) > 0
+            status, TS, M = deserialize(cfile)
+            p = InLP.plot_res(M, TS)
+            fname = replace(file, DATA_FILE_PREFFIX => "fig")
+            fname, _ = splitext(fname)
+            fname = string(fname, ".png")
 
-            # save fig
-            if abs(t - ct) > 0
-                status, TS, M = deserialize(cfile)
-                p = InLP.plot_res(M, TS)
-                fname = replace(file, DATA_FILE_PREFFIX => "fig")
-                fname, _ = splitext(fname)
-                fname = string(fname, ".png")
-                ffile = joinpath(PROG_FIG_DIR, fname)
-                savefig(p, ffile)
-                mtimes[file] = ct
+            lock(WLOCK) do
+                @info "Plotting progress" fname now() threadid()
+                println()
             end
+            
+            ffile = joinpath(PROG_FIG_DIR, fname)
+            savefig(p, ffile)
+            mtimes[file] = ct
 
         end
-        sleep(rand(20:35))
+    end
+end
+@async let
+    sleep(120) # Do not interfere at start
+    while true
+        sleep(rand(30:60))
+        plot_progress()
     end
 end
 
@@ -124,19 +134,18 @@ INDEX = UJL.DictTree() # To Store relevant information
     # τs = [0.0, 0.0022]
     τs = INDEX[:τs] = [0.0] 
     
-    params = Iterators.product(Vls, Ds, ϵs, τs)
-    iparams = params |> enumerate |> collect |> shuffle!
+    params = Iterators.product(Vls, Ds, ϵs, τs) |> collect 
+    iparams = params |> shuffle! |> enumerate |> collect  # distribute equally between threads
     N = length(params)
     @info "Computing $(N) iterations"
 
-    wlock = ReentrantLock()
     @threads for (i, (Vl, D, ϵ, τ)) in iparams
 
         # This must identify the iteration
         sim_params = (;D, ϵ, τ, Vl, M0.Δt, M0.σ, M0.cg)
 
         # Say hello
-        lock(wlock) do
+        lock(WLOCK) do
             @info "Starting $i/$N ..." D ϵ Vl τ now() threadid()
             println()
         end
@@ -146,7 +155,7 @@ INDEX = UJL.DictTree() # To Store relevant information
         if isfile(cfile)
             status, TS, M = deserialize(cfile)
             tslen = length(TS.X_ts)
-            lock(wlock) do
+            lock(WLOCK) do
                 @info "cache loaded $i/$N ... " M.X M.sl M.sg tslen status now() threadid()
                 println()
             end
@@ -189,7 +198,7 @@ INDEX = UJL.DictTree() # To Store relevant information
             # info and lock dat
             show_info = rem(it, info_frec) == 0 || finished || save_dat
             if show_info
-                lock(wlock) do
+                lock(WLOCK) do
                     @info "Doing $i/$N ... " it M.X M.sl M.sg tslen status D ϵ Vl τ now() threadid()
                     println()
                 end
@@ -199,14 +208,14 @@ INDEX = UJL.DictTree() # To Store relevant information
         end
         InLP.run_simulation!(M; on_iter, verbose = false, force = false)
         
-        lock(wlock) do
+        lock(WLOCK) do
             @info "Finished $i/$N ... " tslen now() threadid()
             INDEX[:DFILE, Vl, D, ϵ, τ] = cfile
             println()
             GC.gc()
         end
     end
- 
+    plot_progress()
 end
 
 ## ----------------------------------------------------------------------------
