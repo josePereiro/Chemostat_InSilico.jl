@@ -1,6 +1,7 @@
 discretize(n, Δ) = round(n / Δ) * Δ
 
-function get_marginals(f::Function, M::SimModel, rxns = M.net.rxns; verbose = true, δ = 0.06, LP_cache = nothing)
+function get_marginals(f::Function, M::SimModel, rxns = M.net.rxns; 
+        verbose = true, δ = 0.06, LP_cache = nothing)
     isempty(M.Xb) && error("Xb is empty!!!")
     
     if isnothing(LP_cache)

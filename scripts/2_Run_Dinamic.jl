@@ -59,14 +59,14 @@ const MTIMES = Dict()
 function plot_progress(mtimes = MTIMES)
     for file in readdir(DATA_DIR)
         !startswith(file, DATA_FILE_PREFFIX) && continue
-
+        
         cfile = joinpath(DATA_DIR, file)
 
-        t = get!(mtimes, file, 0.0)
-        ct = mtime(cfile)
+        currt = mtime(cfile)
+        lastt = get!(mtimes, file, currt)
 
         # save fig
-        if abs(t - ct) > 0
+        if lastt != currt
             status, TS, M = deserialize(cfile)
             p = InLP.plot_res(M, TS)
             fname = replace(file, DATA_FILE_PREFFIX => "fig")
@@ -80,7 +80,7 @@ function plot_progress(mtimes = MTIMES)
             
             ffile = joinpath(PROG_FIG_DIR, fname)
             savefig(p, ffile)
-            mtimes[file] = ct
+            mtimes[file] = currt
 
         end
     end
@@ -129,7 +129,7 @@ INDEX = UJL.DictTree() # To Store relevant information
     # Params
     # Vls = [0.0, 0.1]
     Vls = INDEX[:Vls] = [0.0]
-    Ds = INDEX[:Ds]= [0.003:0.003:0.027;]
+    Ds = INDEX[:Ds]= [0.003:0.003:0.035;]
     ϵs = INDEX[:ϵs] = [0.01, 0.1, 0.5]
     # τs = [0.0, 0.0022]
     τs = INDEX[:τs] = [0.0] 

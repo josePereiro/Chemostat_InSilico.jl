@@ -32,9 +32,23 @@ Base.last(v::Vector, i) = v[max(firstindex(v), length(v) - i + 1):lastindex(v)]
 
 ## ----------------------------------------------------------------------------
 # Load DAT
-# DAT [[:DyM, :TS, :M], Vl, D, ϵ]
-DAT_FILE = InCh.DYN_DATA_BUNDLE_FILE
-DAT = UJL.load_data(DAT_FILE)
+# INDEX[:DFILE, Vl, D, ϵ, τ]
+INDEX = UJL.load_data(InCh.DYN_DATA_INDEX_FILE)
+
+function getdat(dk, indexks...)
+    FILE = INDEX[:DFILE, indexks...]
+    if FILE isa UJL.ITERABLE
+        dat = []
+        for F in FILE
+            datum = deserialize(F)[dk]
+            push!(dat, datum)
+        end
+        return dat
+    else
+        dat = deserialize(FILE)
+        return dat[dk]
+    end
+end
 
 ## ----------------------------------------------------------------------------
 # _vs_time_vs_ϵ_vs_D
@@ -42,20 +56,21 @@ let
     
     marginf = 0.2
     f = identity
-    Ds = first(DAT[:Ds], 6)
-    Vl = DAT[:Vls] |> first
+    Ds = first(INDEX[:Ds], 6)
+    Vl = INDEX[:Vls] |> first
+    τ =  INDEX[:τs] |> first
 
     for field in [:X_ts, :sg_ts, :sl_ts]
         
         ylabel = replace(string(field), "_ts" => "")
         ps = map(Ds) do D0
         
-            vals = getfield.(DAT[:TS, Vl, D0, DAT[:ϵs]], field) 
+            vals = getfield.(getdat(:TS, Vl, D0, INDEX[:ϵs], τ), field) 
             ylim = InLP.lims(marginf, vals...)
             
             p = plot(;xlabel = "time", ylabel, 
                 title = string("D: ", UJL.sci(D0)))
-            for (ϵ, val) in zip(DAT[:ϵs], vals) |> collect |> reverse
+            for (ϵ, val) in zip(INDEX[:ϵs], vals) |> collect |> reverse
                 plot!(p, f.(val); 
                     label = ϵ, lw = 4, alpha = 0.7, color = Gray(ϵ * 0.8))
             end
@@ -75,19 +90,20 @@ end
 # Steady state_vs_D Dynamic
 let
     f = identity
-    Ds = first(DAT[:Ds], 8)
-    Vl = DAT[:Vls] |> first
+    Ds = first(INDEX[:Ds], 8)
+    Vl = INDEX[:Vls] |> first
+    τ =  INDEX[:τs] |> first
 
     for field in [:X, :sg, :sl]
         ylabel = field
         p = plot(;xlabel = "D", ylabel, title = "Steady State")
-        for ϵ in DAT[:ϵs] |> reverse
-            Xs = getfield.(DAT[:M, Vl, Ds, ϵ], field) 
+        for ϵ in INDEX[:ϵs] |> reverse
+            Xs = getfield.(getdat(:M, Vl, Ds, ϵ, τ), field) 
             plot!(p, Ds, f.(Xs .+ 1e-8); label = "", lw = 4, alpha = 0.7, color = Gray(ϵ * 0.8))
         end
 
         # saving
-        pname = UJL.mysavename("steady_state_$(field)_vs_D_vs_ϵ", "png"; Vl)
+        pname = UJL.mysavename("dyn_stst_$(field)_vs_D_vs_ϵ", "png"; Vl)
         fname = fig_path(string(fileid, "_", pname))
         savefig(p, fname)
         @info "Plotting" fname
@@ -98,19 +114,21 @@ end
 # marginals
 let
     f = identity
-    Ds =  first(DAT[:Ds], 6)
-    Vl = DAT[:Vls] |> first
+    Ds =  first(INDEX[:Ds], 6)
+    Vl = INDEX[:Vls] |> first
+    τ =  INDEX[:τs] |> first
     
     write_lock = ReentrantLock()
     vg_plots = Vector(undef, length(Ds))
     vatp_plots = Vector(undef, length(Ds))
+
     @threads for (Di, D) in Ds |> enumerate |> collect
 
         vatp_plot = plot(xlabel = "vatp", ylabel = "pdf", title = string("D: ", UJL.sci(D)))
         vg_plot = plot(xlabel = "vg", ylabel = "pdf", title = string("D: ", UJL.sci(D)))
 
-        for ϵ in DAT[:ϵs]
-            M = DAT[:M, Vl, D, ϵ]
+        for ϵ in INDEX[:ϵs]
+            M = getdat(:M, Vl, D, ϵ, τ)
             vatp_range, vg_ranges = InLP.vatpvg_ranges(M)
 
             # collect
@@ -134,7 +152,7 @@ let
             end
 
             # marginals
-            lparams = (;label = "", lw = 4, alpha = 0.7, color =  Gray(ϵ * 0.8))
+            lparams = (;label = "", lw = 4, alpha = 0.5, color =  Gray(ϵ * 0.8))
             plot!(vatp_plot, vatp_range, f(vatp_hist ./ M.X); lparams...)
             plot!(vg_plot, vg_range, f(vg_hist ./ M.X); lparams...)
         end
@@ -163,29 +181,6 @@ let
 end
 
 ## ----------------------------------------------------------------------------
-# dynamic state_vs_D
-let
-    f(x) = x
-    
-    for Vl in DAT[:Vls], ϵ in DAT[:ϵs]
-
-        p = plot(;title = "", xlabel = "D", ylabel = "X")
-
-        Ds = filter((D) -> haskey(DAT, :M, Vl, D, ϵ), DAT[:Ds])
-        Ms = DAT[:M, Vl, Ds, ϵ]
-
-        # Dynamic
-        plot!(p, getfield.(Ms, :D), getfield.(Ms, :X), label = "")
-
-        # saving
-        pname = UJL.mysavename("tot_dyn_stst_X_vs_D", "png"; Vl, ϵ)
-        fname = fig_path(string(fileid, "_", pname))    
-        savefig(p, fname)
-        @info "Plotting" fname
-    end
-end
-
-# ## ----------------------------------------------------------------------------
 # # polytope_ϵ_animation
 # let
 #     Ds = DAT[:Ds]

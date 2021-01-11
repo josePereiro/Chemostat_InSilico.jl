@@ -80,6 +80,8 @@ mutable struct SimModel
     end
 end
 
+Base.merge!(M1, M2) = foreach((f) -> setfield!(M1, f, getfield(M2, f)), fieldnames(SimModel))
+
 vatpvgN(Xb) = sum(length.(values(Xb)))
 vatpvgN(M::SimModel) = vatpvgN(M.Xb)
 

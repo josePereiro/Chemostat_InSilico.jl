@@ -3,6 +3,8 @@
 
 const ABS_MAX_BOUND = 1000.0 # abs bound
 const BIOMASS_IDER = "biom"
+const RXNS = [ "gt"  , "ferm" , "resp" , "ldh" ,  "lt" , BIOMASS_IDER , "atpm" , "vatp" ]
+const METS = ["G", "E", "P", "L", "AUX1"]
 const Y = 348 
 
 struct MetNet
@@ -42,11 +44,11 @@ function ToyModel()
             0.0    Nf    Nr   0.0   0.0   0.0    0.0  -1.0  ;  #  AUX1
     ]
     
-    net[:mets] = ["G", "E", "P", "L", "AUX1"]
+    net[:mets] = deepcopy(METS)
     net[:b] =    [0.0, 0.0, 0.0, 0.0, 0.0] # const exchanges
     
     AB = ABS_MAX_BOUND
-    net[:rxns] = [ "gt"  , "ferm" , "resp" , "ldh" ,  "lt" , BIOMASS_IDER , "atpm" , "vatp" ];
+    net[:rxns] = deepcopy(RXNS)
     net[:lb]   = [ 0.0   ,  0.0   ,  0.0   ,  0.0  ,  -AB  ,     0.0      ,  ATPM  ,  0.0   ];
     net[:ub]   = [  Vg   ,  AB    ,   Vr   ,  AB   ,   0.0 ,      AB      ,   AB   ,  AB    ];
     net[:c]    = [ 0.0   ,  0.0   ,  0.0   ,  0.0  ,   0.0 ,  MAX_SENSE   ,   0.0  ,  0.0   ];
