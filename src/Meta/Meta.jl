@@ -12,7 +12,7 @@ const PROJECT_DIR = abspath(joinpath(@__DIR__, "../.."))
         const CH2_DATA_DIR = joinpath(DATA_DIR, MC_PROJECT_NAME)
         const DYN_DATA_DIR = joinpath(DATA_DIR, DYN_PROJECT_NAME)
             const DYN_DATA_INDEX_FILE = joinpath(DYN_DATA_DIR, "dym_dat_index.bson")
-            const MARGINALS_DATA_FILE = joinpath(DYN_DATA_DIR, "marginals_dat_index.bson")
+            const MARGINALS_INDEX_FILE = joinpath(DYN_DATA_DIR, "marginals_dat_index.bson")
 
     const CACHE_DIR = joinpath(DATA_DIR, "cache")
         const DYN_CACHE_DIR = joinpath(CACHE_DIR, DYN_PROJECT_NAME)

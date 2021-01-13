@@ -12,18 +12,30 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
     using Base.Threads
     using Dates
     using Serialization
+    using Random
+end
+
+## ----------------------------------------------------------------------------
+let
+    M0 = InLP.SimModel()
+    box = InLP.pol_box(M0)
+    @show box
+    LP_cache = InLP.vgvatp_cache(M0; marginf = 1.5)
+    vatps = keys(LP_cache)
+    vatpbs = (minimum(vatps), maximum(vatps))
+    @show vatpbs
 end
 
 ## ----------------------------------------------------------------------------
 # Load and clear DAT
-# DYN_IDX [Vl, D, ϵ, τ] 
-DYN_IDX = UJL.load_data(InCh.DYN_DATA_INDEX_FILE)
+# DINDEX [Vl, D, ϵ, τ] 
+DINDEX = UJL.load_data(InCh.DYN_DATA_INDEX_FILE) # Dynamic index
 DATA_FILE_PREFFIX = "marginal_dat"
 dat_file(;sim_params...) = joinpath(InCh.DYN_DATA_DIR, 
     InLP.mysavename(DATA_FILE_PREFFIX, "jls"; sim_params...))
 
 function getdat(dk, indexks...)
-    FILE = DYN_IDX[:DFILE, indexks...]
+    FILE = DINDEX[:DFILE, indexks...]
     if FILE isa UJL.ITERABLE
         dat = []
         for F in FILE
@@ -105,6 +117,9 @@ function run_model!(M, MODsym; LP_cache, δ, δμ, DyBiom, verbose = true)
         net = M.net
         net.ub[M.obj_idx] = DyBiom * (1.0 + δμ)
         net.lb[M.obj_idx] = DyBiom * (1.0 - δμ)
+        L, U = InLP.fva(M.net)
+        net.lb .= L
+        net.ub .= U
     end
 
     MEMs = InLP.get_marginals(maxentf(beta0), M; δ, LP_cache, verbose)
@@ -119,7 +134,7 @@ let
     δ = INDEX[:δ]   = 0.08 # marginal discretization factor
     δμ = INDEX[:δμ] = 0.01 # FIXXED biomass variance
 
-    N = prod(length.(DYN_IDX[[:Vls, :Ds, :ϵs, :τs]]))
+    N = prod(length.(DINDEX[[:Vls, :Ds, :ϵs, :τs]]))
     c = 0
 
     INDEX[:Vls] = []
@@ -127,25 +142,25 @@ let
     INDEX[:ϵs] = []
     INDEX[:τs] = []
     
-    params = Iterators.product(DYN_IDX[[:Vls, :Ds, :ϵs, :τs]]...) |> collect
+    params = Iterators.product(DINDEX[[:Vls, :Ds, :ϵs, :τs]]...) |> collect |> shuffle!
     @threads for (Vl, D, ϵ, τ) in params
-    
         cfile = dat_file(;Vl, D, ϵ, τ, δ, δμ)
         
         ## ----------------------------------------------------------------------------
         MDAT = UJL.DictTree()
         M0 = getdat(:M, Vl, D, ϵ, τ)
-        LP_cache = InLP.vgvatp_cache(M0)
+        LP_cache = nothing
         
         lock(WLOCK) do
             c += 1
+            LP_cache = InLP.vgvatp_cache(M0; marginf = 1.5)
             push!(INDEX[:Vls], Vl)
             push!(INDEX[:Ds], D)
             push!(INDEX[:ϵs], ϵ)
             push!(INDEX[:τs], τ)
             INDEX[:DFILE, Vl, D, ϵ, τ] = cfile
-            INDEX[:STATUS, Vl, D, ϵ, τ] = M0.X < DYN_IDX[:death_th] ? :death : :stst
-            @info "Doing $c/$N ... " Vl D ϵ τ M0.X threadid()
+            INDEX[:STATUS, Vl, D, ϵ, τ] = M0.X < DINDEX[:death_th] ? :death : :stst
+            @info "Doing $c/$N ... " Vl, D, ϵ, τ M0.X threadid()
             println()
         end
         INDEX[:STATUS, Vl, D, ϵ, τ] == :death && continue  # Exclude deaths
@@ -162,9 +177,12 @@ let
         ## ----------------------------------------------------------------------------
         # Dynamic marginal
         f(vatp, vg) = M0.Xb[vatp][vg] / M0.X
-        DyMs = MDAT[:DyMs] = InLP.get_marginals(f, M0; 
+        DyMs = InLP.get_marginals(f, M0; 
             δ, LP_cache, verbose = false)
         DyBiom = InLP.av(DyMs[InLP.BIOMASS_IDER]) # biomass dynamic mean
+        lock(WLOCK) do
+            MDAT[:DyMs] = DyMs
+        end
 
         ## ----------------------------------------------------------------------------
         # MaxEnt marginals
@@ -172,7 +190,7 @@ let
             for POLTsym in [STST_POL, DYN_POL]
                 
                 lock(WLOCK) do
-                    @info "Doing  $c/$N ... " MODsym POLTsym Vl D ϵ M0.X threadid()
+                    @info "Doing  $c/$N ... " MODsym POLTsym Vl, D, ϵ, τ M0.X threadid()
                     println()
                 end
 
@@ -196,7 +214,7 @@ let
         end
 
         lock(WLOCK) do
-            @info "Finished  $c/$N ... " Vl D ϵ M0.X basename(cfile) threadid()
+            @info "Finished  $c/$N ... " Vl, D, ϵ, τ M0.X basename(cfile) threadid()
             serialize(cfile, MDAT)
             println()
         end
@@ -212,6 +230,6 @@ end
 
 ## ----------------------------------------------------------------------------
 # SAVING
-UJL.save_data(InCh.MARGINALS_DATA_FILE, INDEX)
+UJL.save_data(InCh.MARGINALS_INDEX_FILE, INDEX)
 
 

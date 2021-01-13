@@ -129,7 +129,7 @@ INDEX = UJL.DictTree() # To Store relevant information
     # Params
     # Vls = [0.0, 0.1]
     Vls = INDEX[:Vls] = [0.0]
-    Ds = INDEX[:Ds]= [0.003:0.003:0.035;]
+    Ds = INDEX[:Ds]= [0.003:0.003:0.045;]
     ϵs = INDEX[:ϵs] = [0.01, 0.1, 0.5]
     # τs = [0.0, 0.0022]
     τs = INDEX[:τs] = [0.0] 
@@ -139,7 +139,7 @@ INDEX = UJL.DictTree() # To Store relevant information
     N = length(params)
     @info "Computing $(N) iterations"
 
-    @threads for (i, (Vl, D, ϵ, τ)) in iparams
+    for (i, (Vl, D, ϵ, τ)) in iparams
 
         # This must identify the iteration
         sim_params = (;D, ϵ, τ, Vl, M0.Δt, M0.σ, M0.cg)

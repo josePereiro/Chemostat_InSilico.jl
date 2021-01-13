@@ -53,13 +53,28 @@ POL_STYLE = Dict(
 
 ## ----------------------------------------------------------------------------
 # Marginals
-# MDAT[MODsym, POLTsym, :M, Vl, D, ϵ]
-# MDAT[MODsym, POLTsym, :MEMs, Vl, D, ϵ]
-# MDAT[MODsym, POLTsym, :beta0, Vl, D, ϵ]
+# MDAT[MODsym, POLTsym, :M, Vl, D, ϵ, τ]
+# MDAT[MODsym, POLTsym, :MEMs, Vl, D, ϵ, τ]
+# MDAT[MODsym, POLTsym, :beta0, Vl, D, ϵ, τ]
 # MDAT[:STATUS, Vl, D, ϵ]
-MDAT = UJL.load_data(InCh.MARGINALS_DATA_FILE);
+MINDEX = UJL.load_data(InCh.MARGINALS_INDEX_FILE)
 POLTsym = STST_POL
-EXP_PARAMS = Iterators.product(MDAT[[:Vls, :Ds, :ϵs, :τs]]...);
+EXP_PARAMS = Iterators.product(MINDEX[[:Vls, :Ds, :ϵs, :τs]]...);
+
+function getdat(dk, dks...)
+    FILE = MINDEX[:DFILE, dks...]
+    if FILE isa UJL.ITERABLE
+        dat = []
+        for F in FILE
+            datum = deserialize(F)[dk...]
+            push!(dat, datum)
+        end
+        return dat
+    else
+        dat = deserialize(FILE)
+        return dat[dk...]
+    end
+end
 
 ## ----------------------------------------------------------------------------
 # PLOTS
@@ -67,16 +82,16 @@ PS = UJL.DictTree()
 function mysavefig(p, pname; params...)
     pname = UJL.mysavename(pname, "png"; params...)
     fname = joinpath(InLP.DYN_FIGURES_DIR, string(fileid, "_", pname))
-    PS[pname] = deepcopy(p)
     savefig(p, fname)
+    PS[pname] = deepcopy(p)
     @info "Plotting" fname
 end
 
 ## ----------------------------------------------------------------------------
 # Plot functions
-function plot_pol!(p, POLTsym, MODsym, Vl, D, ϵ; sparams...)
+function plot_pol!(p, POLTsym, MODsym, Vl, D, ϵ, τ; sparams...)
     
-    vatp_range, vg_ranges = MDAT[MODsym, POLTsym, :POL, Vl, D, ϵ] 
+    vatp_range, vg_ranges = getdat([MODsym, POLTsym, :POL], Vl, D, ϵ, τ)
     vatps, vgLs, vgUs = [], [], []
     
     for (vatpi, vatp) in enumerate(vatp_range)
@@ -95,12 +110,12 @@ function plot_pol!(p, POLTsym, MODsym, Vl, D, ϵ; sparams...)
     PS[MODsym, POLTsym, :POL, Vl, D, ϵ] = deepcopy(p)
 end
 
-function plot_marginals!(p, MODsym, POLTsym, rxn, Vl, D, ϵ; sparams...)
+function plot_marginals!(p, MODsym, POLTsym, rxn, Vl, D, ϵ, τ; sparams...)
 
     ls = POL_STYLE[POLTsym]
     color = MOD_COLORS[MODsym]
-    MEMs = MDAT[MODsym, POLTsym, :MEMs, Vl, D, ϵ]
-    DyMs = MDAT[:DyMs, Vl, D, ϵ]
+    MEMs = getdat([MODsym, POLTsym, :MEMs], Vl, D, ϵ, τ)
+    DyMs = getdat([:DyMs], Vl, D, ϵ, τ)
     
     # Marginals
     plot!(p, DyMs[rxn]; label = "", sparams..., color = :black)
@@ -108,162 +123,142 @@ function plot_marginals!(p, MODsym, POLTsym, rxn, Vl, D, ϵ; sparams...)
 end
 
 ## ----------------------------------------------------------------------------
-# Polytopes
-let
-    sparams =(;alpha = 0.5, lw = 5, ylim = [0.0, Inf])
+# # Polytopes
+# let
+#     sparams =(;alpha = 0.5, lw = 5, ylim = [0.0, Inf])
 
-    for (Vl, D, ϵ, τ) in EXP_PARAMS
-        MDAT[:STATUS, Vl, D, ϵ] == :death && continue
-
-        for MODsym = [HOMO, FIXXED, HETER]
-            p = plot(;title = "polytope", xlabel = "vatp", ylabel = "vg")        
-            for POLTsym in [STST_POL, DYN_POL]
-                plot_pol!(p, POLTsym, MODsym, Vl, D, ϵ; sparams...)
-            end
+#     for (Vl, D, ϵ, τ) in EXP_PARAMS
+#         MINDEX[:STATUS, Vl, D, ϵ, τ] == :death && continue
+#         for MODsym = [HOMO, FIXXED, HETER]
+#             p = plot(;title = "polytope", xlabel = "vatp", ylabel = "vg")        
+#             for POLTsym in [STST_POL, DYN_POL]
+#                 plot_pol!(p, POLTsym, MODsym, Vl, D, ϵ, τ; sparams...)
+#             end
             
-            mysavefig(p, "Polytopes_$(POLTsym)_$(MODsym)"; Vl, D, ϵ)
-        end
-    end
-end
+#             mysavefig(p, "Polytopes_$(POLTsym)_$(MODsym)"; Vl, D, ϵ, τ)
+#         end
+#     end
+# end
 
 ## ----------------------------------------------------------------------------
 # Marginals
 let
-    D = MDAT[:Ds][1]
-    Vl = MDAT[:Vls][1]
-    ϵ = MDAT[:ϵs][1]
-    τ = MDAT[:τs][1]
-
+   
     for (Vl, D, ϵ, τ) in EXP_PARAMS
-        MDAT[:STATUS, Vl, D, ϵ] == :death && continue
+        MINDEX[:STATUS, Vl, D, ϵ, τ] == :death && continue
         ps = []
-        sparams =(;alpha = 0.7, lw = 5, ylim = [0.0, Inf])
+        sparams =(;alpha = 0.8, lw = 5, ylim = [0.0, Inf])
         gparams = (xaxis = nothing, yaxis = nothing, grid = false, 
                 titlefont = 10, xaxisfont = 10)
         for rxn in InLP.RXNS
             p = plot(;title = rxn, xlabel = "flx", ylabel = "prob", gparams...)
-            for  MODsym = [HOMO, FIXXED, HETER]
-                plot_marginals!(p, MODsym, POLTsym, rxn, Vl, D, ϵ; sparams...)
+            for  MODsym = [FIXXED, HETER, HOMO]
+                plot_marginals!(p, MODsym, POLTsym, rxn, Vl, D, ϵ, τ; sparams...)
             end
             push!(ps, p)
         end
 
         p = plot(;title = "polytope", xlabel = "vatp", ylabel = "vg", gparams...)        
-        plot_pol!(p, POLTsym, HETER, Vl, D, ϵ; sparams...)
-        plot_pol!(p, POLTsym, HOMO, Vl, D, ϵ; sparams...)
-        plot_pol!(p, POLTsym, FIXXED, Vl, D, ϵ; sparams...)
+        plot_pol!(p, POLTsym, HETER, Vl, D, ϵ, τ; sparams...)
+        plot_pol!(p, POLTsym, HOMO, Vl, D, ϵ, τ; sparams...)
+        plot_pol!(p, POLTsym, FIXXED, Vl, D, ϵ, τ; sparams...)
         push!(ps, p)
         
         p = plot(ps...; layout = length(ps))
         mysavefig(p, "Marginals_$(POLTsym)_"; Vl, D, ϵ)
     end
-
 end
-
 
 ## ----------------------------------------------------------------------------
 let
-    D = MDAT[:Ds][1]
-    Vl = MDAT[:Vls][1]
-    ϵ = MDAT[:ϵs][1]
-    τ = MDAT[:τs][1]
+    for (Vl, D, ϵ, τ) = EXP_PARAMS
+        MINDEX[:STATUS, Vl, D, ϵ, τ] == :death && continue
+        dat = getdat([:DyMs], Vl, D, ϵ, τ)
+        @show length(dat)
+        break
+    end
 end
+
 ## ----------------------------------------------------------------------------
-# # Bound Correlation
-# let
-#     f(x) = x
-#     p = plot(;title = "Bounds Correlation", 
-#         xlabel = "dym bound", ylabel = "stst bound")
-#     l, u = Inf, -Inf
-#     for Vl in DAT[:Vls], D in DAT[:Ds], ϵ in DAT[:ϵs]
+# Bound Correlation
+let
+    f(x) = x
+    p = plot(;title = "Exchs Bounds Correlation", 
+        xlabel = "dym bound", ylabel = "stst bound")
+    l, u = Inf, -Inf
 
-#         !haskey(DAT, :M0, Vl, D, ϵ) && continue
-#         M0 = DAT[:M, Vl, D, ϵ]
-#         xi = M0.X / D
+    STST_vgubs, DYN_vgubs = [], []
+    STST_vlubs, DYN_vlubs = [], []
+    for (Vl, D, ϵ, τ) in EXP_PARAMS
+        MINDEX[:STATUS, Vl, D, ϵ, τ] == :death && continue
 
-#         vgubs = []
-#         vlubs = []
-#         for (MEMs_sym, prep_fun!) in [
-#                                     (:MEMs_dym_bound, prepare_net_dym!),
-#                                     (:MEMs_stst_bound, prepare_net_stst!),
-#                                 ]
+        for  MODsym in [FIXXED, HETER, HOMO]
+            M = getdat([MODsym, STST_POL, :M], Vl, D, ϵ, τ)
+            push!(STST_vgubs, M.net.ub[M.vg_idx])
+            push!(STST_vlubs, M.net.ub[M.vl_idx])
 
-#             M = deepcopy(M0)
-#             InLP.fill_board!(M.Xb, 1.0)
-#             net = prep_fun!(M, xi)
-#             push!(vgubs, net.ub[M.vg_idx])
-#             push!(vlubs, net.ub[M.vl_idx])
+            M = getdat([MODsym, DYN_POL, :M], Vl, D, ϵ, τ)
+            push!(DYN_vgubs, M.net.ub[M.vg_idx])
+            push!(DYN_vlubs, M.net.ub[M.vl_idx])
+        end
+    end
 
-#         end
-#         xs = first.([vgubs, vlubs])
-#         ys = last.([vgubs, vlubs])
-#         l = minimum([l; xs; ys])            
-#         u = maximum([u; xs; ys])            
-#         scatter!(p, f.(xs), f.(ys); alpha = 0.5, color = :black, label = "")
+    xs = [DYN_vgubs; DYN_vlubs]
+    ys = [STST_vgubs; STST_vlubs]
+    l = minimum([l; xs; ys])            
+    u = maximum([u; xs; ys])            
+    plot!(p, f.([l, u]), f.([l, u]); label = "", ls = :dash, alpha = 0.8)
+    scatter!(p, f.(xs), f.(ys); alpha = 0.5, color = :black, label = "")
 
-#     end
-#     plot!(p, f.([l, u]), f.([l, u]); label = "", ls = :dash, alpha = 0.8)
+    # saving
+    mysavefig(p, "exchs_bounds_corr")
 
-#     # saving
-#     pname = UJL.mysavename("bounds_corr", "png")
-#     P[pname] = deepcopy(p)
-#     fname = fig_path(string(fileid, "_", pname))    
-#     savefig(p, fname)
-#     @info "Plotting" fname
+end
 
-# end
 
-# ## ----------------------------------------------------------------------------
-# # Steady State EP Dynamic correlation
-# let
-#     f(x) = x
+## ----------------------------------------------------------------------------
+# Steady State EP Dynamic correlation
+let
+    f(x) = log10(abs(x) + 1e-8)
+    
+    ps = []
+    for  MODsym in [FIXXED, HETER, HOMO]
+        
+        p = plot(;title = "Exchs Correlation $(MODsym)", 
+            xlabel = "dym flxs", ylabel = "maxent flxs", 
+            legend = :topleft
+        )
+        
+        color = MOD_COLORS[MODsym]
+        DYN_flxs = []
+        ME_flxs = []
+        
+        for (Vl, D, ϵ, τ) in EXP_PARAMS
+            MINDEX[:STATUS, Vl, D, ϵ, τ] == :death && continue
+            DyMs = getdat([:DyMs], Vl, D, ϵ, τ)
+            MEMs = getdat([MODsym, STST_POL, :MEMs], Vl, D, ϵ, τ)
+            
+            for rxn in InLP.RXNS
+                DYN_flx = InLP.av(DyMs[rxn])
+                ME_flx = InLP.av(MEMs[rxn])
+                (isnan(DYN_flx) || isnan(ME_flx)) && continue
 
-#     for MEMs_sym in [:MEMs_dym_bound, :MEMs_stst_bound]
+                push!(DYN_flxs, DYN_flx)
+                push!(ME_flxs, ME_flx)
+            end
+        end
+        xs = DYN_flxs
+        ys = ME_flxs
+        l = minimum(f.([xs; ys]))            
+        u = maximum(f.([xs; ys]))    
+        m = abs(u - l) * 0.1        
+        scatter!(p, f.(xs), f.(ys); ms = 8, alpha = 0.5, color, label = "")
+        plot!(p, [l - m, u + m], [l - m, u + m]; label = "", ls = :dash, alpha = 0.8)
+        push!(ps, p)
+    end
+    p = plot(ps...; layout = @layout([a b c]))
 
-#         p = plot(;title = "Total Correlation", 
-#             xlabel = "flx (Dynamic)", ylabel = "flx (MaxEnt)")
-
-#         PD = UJL.DictTree()
-#         @showprogress for Vl in DAT[:Vls], D in DAT[:Ds], ϵ in DAT[:ϵs]
-
-#             !haskey(DAT, :M0, Vl, D, ϵ) && continue
-#             M, TS = DAT[[:M, :TS], Vl, D, ϵ]
-#             DyMs = DAT[:DyMs, Vl, D, ϵ]
-#             MEMs = DAT[MEMs_sym, Vl, D, ϵ]
-#             beta0 = DAT[MEMs_sym, :beta0, Vl, D, ϵ]
-#             isnan(beta0) && continue # leave out deaths
-
-#             for rxn in M.net.rxns
-#                 rxn in ["atpm", "vatp"] && continue
-
-#                 foreach([:MEAv, :MEStd, :DyAv, :DyStd]) do id 
-#                     get!(PD, [], rxn, id)
-#                 end
-
-#                 push!(PD[rxn, :MEAv], InLP.av(MEMs[rxn]))
-#                 push!(PD[rxn, :MEStd], sqrt(InLP.va(MEMs[rxn])))
-#                 push!(PD[rxn, :DyAv], InLP.av(DyMs[rxn]))
-#                 push!(PD[rxn, :DyStd], sqrt(InLP.va(DyMs[rxn])))
-
-#             end
-#         end
-
-#         # scatter!(p, f.([DyAv]), f.([MEAv]); xerr = f.([DyStd]), yerr = f.([MEStd]),
-#         #             alpha = 0.5, color = :white, label = "", ms = 8)
-
-#         for rxn in keys(PD)
-#             norm = maximum(abs.(PD[rxn, :DyAv]))
-#             scatter!(p, PD[rxn, :DyAv] ./ norm, PD[rxn, :MEAv] ./ norm; 
-#                     xerr = PD[rxn, :DyStd] ./ norm, yerr = PD[rxn, :MEStd] ./ norm,
-#                     alpha = 0.5, label = "", ms = 8)
-#         end
-
-#         plot!(p, [-1.0, 1.0], [-1.0, 1.0]; label = "", ls = :dash, alpha = 0.8)
-
-#         # saving
-#         pname = UJL.mysavename("Dyn_$(MEMs_sym)_flx_corr", "png")
-#         fname = fig_path(string(fileid, "_", pname))    
-#         savefig(p, fname)
-#         @info "Plotting" fname
-#     end
-# end
+    # saving
+    mysavefig(p, "flxs_corr")
+    
+end

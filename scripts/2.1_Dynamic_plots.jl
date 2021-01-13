@@ -51,38 +51,46 @@ function getdat(dk, indexks...)
 end
 
 ## ----------------------------------------------------------------------------
+# PLOTS
+PS = UJL.DictTree()
+function mysavefig(p, pname; params...)
+    pname = UJL.mysavename(pname, "png"; params...)
+    fname = joinpath(InLP.DYN_FIGURES_DIR, string(fileid, "_", pname))
+    PS[pname] = deepcopy(p)
+    savefig(p, fname)
+    @info "Plotting" fname
+end
+
+## ----------------------------------------------------------------------------
 # _vs_time_vs_ϵ_vs_D
 let
     
     marginf = 0.2
     f = identity
     Ds = first(INDEX[:Ds], 6)
-    Vl = INDEX[:Vls] |> first
-    τ =  INDEX[:τs] |> first
 
-    for field in [:X_ts, :sg_ts, :sl_ts]
-        
-        ylabel = replace(string(field), "_ts" => "")
-        ps = map(Ds) do D0
-        
-            vals = getfield.(getdat(:TS, Vl, D0, INDEX[:ϵs], τ), field) 
-            ylim = InLP.lims(marginf, vals...)
+    for Vl in INDEX[:Vls], τ in INDEX[:τs]
+        for field in [:X_ts, :sg_ts, :sl_ts]
             
-            p = plot(;xlabel = "time", ylabel, 
-                title = string("D: ", UJL.sci(D0)))
-            for (ϵ, val) in zip(INDEX[:ϵs], vals) |> collect |> reverse
-                plot!(p, f.(val); 
-                    label = ϵ, lw = 4, alpha = 0.7, color = Gray(ϵ * 0.8))
+            ylabel = replace(string(field), "_ts" => "")
+            ps = map(Ds) do D0
+            
+                vals = getfield.(getdat(:TS, Vl, D0, INDEX[:ϵs], τ), field) 
+                ylim = InLP.lims(marginf, vals...)
+                
+                p = plot(;xlabel = "time", ylabel, 
+                    title = string("D: ", UJL.sci(D0)))
+                for (ϵ, val) in zip(INDEX[:ϵs], vals) |> collect |> reverse
+                    plot!(p, f.(val); 
+                        label = ϵ, lw = 4, alpha = 0.7, color = Gray(ϵ * 0.8))
+                end
+                p
             end
-            p
+            p0 = plot(ps...; layout = length(ps), legend = false, titlefont = 12)
+            
+            # saving
+            mysavefig(p0, "$(ylabel)_vs_time_vs_ϵ_vs_D"; Vl, τ)
         end
-        p0 = plot(ps...; layout = length(ps), legend = false, titlefont = 12)
-        
-        # saving
-        pname = UJL.mysavename("$(ylabel)_vs_time_vs_ϵ_vs_D", "png"; Vl)
-        fname = fig_path(string(fileid, "_", pname))
-        savefig(p0, fname)
-        @info "Plotting" fname
     end
 end
 
@@ -90,23 +98,20 @@ end
 # Steady state_vs_D Dynamic
 let
     f = identity
-    Ds = first(INDEX[:Ds], 8)
-    Vl = INDEX[:Vls] |> first
-    τ =  INDEX[:τs] |> first
+    Ds = INDEX[:Ds]
 
-    for field in [:X, :sg, :sl]
-        ylabel = field
-        p = plot(;xlabel = "D", ylabel, title = "Steady State")
-        for ϵ in INDEX[:ϵs] |> reverse
-            Xs = getfield.(getdat(:M, Vl, Ds, ϵ, τ), field) 
-            plot!(p, Ds, f.(Xs .+ 1e-8); label = "", lw = 4, alpha = 0.7, color = Gray(ϵ * 0.8))
+    for Vl in INDEX[:Vls], τ in INDEX[:τs]
+        for field in [:X, :sg, :sl]
+            ylabel = field
+            p = plot(;xlabel = "D", ylabel, title = "Steady State")
+            for ϵ in INDEX[:ϵs] |> reverse
+                Xs = getfield.(getdat(:M, Vl, Ds, ϵ, τ), field) 
+                plot!(p, Ds, f.(Xs .+ 1e-8); label = "", lw = 4, alpha = 0.7, color = Gray(ϵ * 0.8))
+            end
+
+            # saving
+            mysavefig(p, "$(ylabel)_vs_time_vs_ϵ_vs_D"; Vl, τ)
         end
-
-        # saving
-        pname = UJL.mysavename("dyn_stst_$(field)_vs_D_vs_ϵ", "png"; Vl)
-        fname = fig_path(string(fileid, "_", pname))
-        savefig(p, fname)
-        @info "Plotting" fname
     end
 end
 
@@ -122,13 +127,14 @@ let
     vg_plots = Vector(undef, length(Ds))
     vatp_plots = Vector(undef, length(Ds))
 
-    @threads for (Di, D) in Ds |> enumerate |> collect
+    for (Di, D) in Ds |> enumerate 
 
         vatp_plot = plot(xlabel = "vatp", ylabel = "pdf", title = string("D: ", UJL.sci(D)))
         vg_plot = plot(xlabel = "vg", ylabel = "pdf", title = string("D: ", UJL.sci(D)))
 
         for ϵ in INDEX[:ϵs]
             M = getdat(:M, Vl, D, ϵ, τ)
+
             vatp_range, vg_ranges = InLP.vatpvg_ranges(M)
 
             # collect
@@ -152,7 +158,7 @@ let
             end
 
             # marginals
-            lparams = (;label = "", lw = 4, alpha = 0.5, color =  Gray(ϵ * 0.8))
+            lparams = (;label = ϵ, lw = 4, alpha = 0.5, color =  Gray((1.0 - ϵ) * 0.3))
             plot!(vatp_plot, vatp_range, f(vatp_hist ./ M.X); lparams...)
             plot!(vg_plot, vg_range, f(vg_hist ./ M.X); lparams...)
         end
@@ -168,16 +174,10 @@ let
     # saving
     params = (;legend = false, titlefont = 10, axistitle = 10)
     p = plot(vatp_plots...; layout = length(vatp_plots), params...)
-    pname = "vatp_marginals_vs_D_vs_ϵ.png" 
-    fname = fig_path(string(fileid, "_", pname))
-    savefig(p, fname)
-    @info "Plotting" fname
-
+    mysavefig(p, "dyn_vatp_marginals_vs_D_vs_ϵ.png")
+    
     p = plot(vg_plots...; layout = length(vg_plots), params...)
-    pname = "vg_marginals_vs_D_vs_ϵ.png" 
-    fname = fig_path(string(fileid, "_", pname))
-    savefig(p, fname)
-    @info "Plotting" fname
+    mysavefig(p, "dyn_vg_marginals_vs_D_vs_ϵ.png")
 end
 
 ## ----------------------------------------------------------------------------
