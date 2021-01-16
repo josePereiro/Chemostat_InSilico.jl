@@ -12,8 +12,8 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
     using Plots
 
     # Test
-    import GR
-    GR.inline("png")
+    # import GR
+    # GR.inline("png")
 
     import UtilsJL
     const UJL = UtilsJL
@@ -56,7 +56,7 @@ end
 ## ---------------------------------------------------------
 # Plot progress coroutine
 const MTIMES = Dict()
-function plot_progress(mtimes = MTIMES)
+function plot_progress(mtimes = MTIMES; force = false)
     for file in readdir(DATA_DIR)
         !startswith(file, DATA_FILE_PREFFIX) && continue
         
@@ -66,7 +66,7 @@ function plot_progress(mtimes = MTIMES)
         lastt = get!(mtimes, file, currt)
 
         # save fig
-        if lastt != currt
+        if lastt != currt || force
             status, TS, M = deserialize(cfile)
             p = InLP.plot_res(M, TS)
             fname = replace(file, DATA_FILE_PREFFIX => "fig")
@@ -113,9 +113,10 @@ INDEX = UJL.DictTree() # To Store relevant information
         )
 
     @info "Starting simulation -t($(nthreads()))" now()
+    println()
 
     # cache
-    InLP.vgvatp_cache(M0)
+    LP_cache = InLP.vgvatp_cache(M0)
 
     # simulation params
     stst_th = 0.05
@@ -130,16 +131,17 @@ INDEX = UJL.DictTree() # To Store relevant information
     # Vls = [0.0, 0.1]
     Vls = INDEX[:Vls] = [0.0]
     Ds = INDEX[:Ds]= [0.003:0.003:0.045;]
-    ϵs = INDEX[:ϵs] = [0.01, 0.1, 0.5]
+    ϵs = INDEX[:ϵs] = [0.01, 0.1, 0.5, 1.0]
     # τs = [0.0, 0.0022]
     τs = INDEX[:τs] = [0.0] 
     
-    params = Iterators.product(Vls, Ds, ϵs, τs) |> collect 
-    iparams = params |> shuffle! |> enumerate |> collect  # distribute equally between threads
+    params = Iterators.product(Vls, Ds, ϵs, τs)
+    # iparams = params |> shuffle! |> enumerate |> collect  # distribute equally between threads
     N = length(params)
     @info "Computing $(N) iterations"
+    println() 
 
-    for (i, (Vl, D, ϵ, τ)) in iparams
+    for (i, (Vl, D, ϵ, τ)) in params |> enumerate
 
         # This must identify the iteration
         sim_params = (;D, ϵ, τ, Vl, M0.Δt, M0.σ, M0.cg)
@@ -206,7 +208,7 @@ INDEX = UJL.DictTree() # To Store relevant information
 
             return finished
         end
-        InLP.run_simulation!(M; on_iter, verbose = false, force = false)
+        InLP.run_simulation!(M; on_iter, LP_cache, verbose = false, force = false)
         
         lock(WLOCK) do
             @info "Finished $i/$N ... " tslen now() threadid()
@@ -215,7 +217,7 @@ INDEX = UJL.DictTree() # To Store relevant information
             GC.gc()
         end
     end
-    plot_progress()
+    plot_progress(;force = true)
 end
 
 ## ----------------------------------------------------------------------------

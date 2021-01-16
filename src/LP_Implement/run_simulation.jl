@@ -1,21 +1,25 @@
 # Sim function
 function run_simulation!(M::SimModel; 
         on_iter = (it, M) -> false,
-        cache_marginf = 50,
         verbose = true,
         verbose_frec = 10,
         force = false,
-        force_frac = 100
+        force_frac = 100, 
+        LP_cache = nothing,
+        cache_marginf::Float64 = 1.5
     )
 
-    # cache
-    cache = vgvatp_cache(M; marginf = cache_marginf)
+    # LP_cache
+    if(isnothing(LP_cache))
+        LP_cache = vgvatp_cache(M; marginf = cache_marginf)
+    end
 
     ## ---------------------------------------------------------
     # extract model constants
     Xb =  M.Xb
     vatp_idx, vg_idx, vl_idx, obj_idx = M.vatp_idx, M.vg_idx, M.vl_idx, M.obj_idx
     cg, cl, Vg, Kg, Vl, Kl = M.cg, M.cl, M.Vg, M.Kg, M.Vl, M.Kl
+
     σ, τ, Δt = M.σ, M.τ, M.Δt
     
     ## ---------------------------------------------------------
@@ -92,7 +96,7 @@ function run_simulation!(M::SimModel;
                 Σvg__X[vatpi] = Σvg__Xi
 
                 vg0 = first(vg_range)
-                z[vatpi] = cache[vatp][vg0][obj_idx]
+                z[vatpi] = LP_cache[vatp][vg0][obj_idx]
             end
 
             Σ_vatp_vg__z_X = sum(z[vatpi] * Σvg__X[vatpi] for (vatpi, vatp) in i_vatp_range)
@@ -160,7 +164,7 @@ function run_simulation!(M::SimModel;
             Σ_vatp_vg__vl_X_pool = zeros(nthreads())
             @threads for (vatpi, vatp) in i_vatp_range
                 tid = threadid()
-                lcache = cache[vatp]
+                lcache = LP_cache[vatp]
                 lXb = Xb[vatp]
                 for vg in vg_ranges[vatpi]
                     vl = lcache[vg][vl_idx]

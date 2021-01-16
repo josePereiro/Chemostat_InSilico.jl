@@ -24,6 +24,7 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
     using Statistics
     using InteractiveUtils
     using Random
+    using Colors
 
 end
 
@@ -108,19 +109,26 @@ function plot_pol!(p, POLTsym, MODsym, Vl, D, ϵ, τ; sparams...)
     plot!(p, [vatps], [vgLs]; label = "", ls, alpha = 0.4, color, lw = 3, sparams...)
     plot!(p, [vatps], [vgUs]; label = "", ls, alpha = 0.4, color, lw = 3, sparams...)
     PS[MODsym, POLTsym, :POL, Vl, D, ϵ] = deepcopy(p)
+    p
 end
 
-function plot_marginals!(p, MODsym, POLTsym, rxn, Vl, D, ϵ, τ; sparams...)
+function plot_marginals!(p, MODsyms, POLTsym, rxn, Vl, D, ϵ, τ; sparams...)
 
     ls = POL_STYLE[POLTsym]
-    color = MOD_COLORS[MODsym]
-    MEMs = getdat([MODsym, POLTsym, :MEMs], Vl, D, ϵ, τ)
     DyMs = getdat([:DyMs], Vl, D, ϵ, τ)
+    plot!(p, DyMs[rxn]; label = "", sparams..., color = :black)
     
     # Marginals
-    plot!(p, DyMs[rxn]; label = "", sparams..., color = :black)
-    plot!(p, MEMs[rxn]; label = "", color, sparams...)
+    for MODsym in MODsyms
+        color = MOD_COLORS[MODsym]
+        MEMs = getdat([MODsym, POLTsym, :MEMs], Vl, D, ϵ, τ)
+        plot!(p, MEMs[rxn]; label = "", color, sparams...)
+        PS[MODsym, POLTsym, :POL, Vl, D, ϵ] = deepcopy(p)
+    end
+    p
 end
+plot_marginals!(p, MODsyms::Symbol, POLTsym, rxn, Vl, D, ϵ, τ; sparams...) = 
+    plot_marginals!(p, [MODsyms], POLTsym, rxn, Vl, D, ϵ, τ; sparams...)
 
 ## ----------------------------------------------------------------------------
 # # Polytopes
@@ -141,7 +149,7 @@ end
 # end
 
 ## ----------------------------------------------------------------------------
-# Marginals
+# all Marginals
 let
    
     for (Vl, D, ϵ, τ) in EXP_PARAMS
@@ -170,14 +178,68 @@ let
 end
 
 ## ----------------------------------------------------------------------------
+# selected Marginals
 let
-    for (Vl, D, ϵ, τ) = EXP_PARAMS
-        MINDEX[:STATUS, Vl, D, ϵ, τ] == :death && continue
-        dat = getdat([:DyMs], Vl, D, ϵ, τ)
-        @show length(dat)
-        break
+    Vl = MINDEX[:Vls] |> first
+    τ = MINDEX[:τs] |> first
+    D = (MINDEX[:Ds] |> sort)[3]
+    ϵs = MINDEX[:ϵs] |> sort
+    sparams =(;alpha = 0.8, lw = 5, ylim = [0.0, Inf])
+    gparams = (grid = false, titlefont = 10, xaxisfont = 10)
+    
+    ps = []
+    for ϵ in ϵs
+        for rxn in ["gt", "vatp"]
+            MINDEX[:STATUS, Vl, D, ϵ, τ] == :death && continue
+            @info "Doing" rxn, Vl, D, ϵ, τ
+            p = plot(;title = "ϵ = $ϵ", 
+                xlabel = rxn == "gt" ? "vg" : rxn, 
+                ylabel = "prob", gparams...
+            )
+            @time begin
+                plot_marginals!(p, [HOMO, HETER, FIXXED], POLTsym, rxn, 
+                    Vl, D, ϵ, τ; sparams...)
+            end
+            push!(ps, p)
+        end
     end
+    M, N = 4, 2
+    p = plot(ps...; layout = grid(M, N), 
+        size = [400 * N, 300 * M])
+    mysavefig(p, "dyn_vs_model_margials_$(POLTsym)"; Vl, D, τ)
 end
+
+## ----------------------------------------------------------------------------
+# beta vs eps
+let
+    ϵs = MINDEX[:ϵs] |> sort
+    colors = Plots.distinguishable_colors(length(MINDEX[:Ds]))
+    colors = Dict(D => c for (D, c) in zip(MINDEX[:Ds], colors))
+    p = plot(;xlabel = "beta", ylabel = "ϵ")
+    sparams = (;alpha = 0.5, ms = 6)
+    for (Vl, D, τ) in Iterators.product(MINDEX[[:Vls, :Ds, :τs]]...)
+        ϵ_ser = []
+        beta_ser = []
+        for ϵ in ϵs
+            MINDEX[:STATUS, Vl, D, ϵ, τ] == :death && continue
+            beta = getdat([:HETER, POLTsym, :beta0], Vl, D, ϵ, τ)
+            push!(ϵ_ser, ϵ)
+            push!(beta_ser, beta)
+        end
+        scatter!(p, beta_ser, ϵ_ser; label = "", color = colors[D], sparams...)
+    end
+    mysavefig(p, "$(HETER)_beta_vs_eps_D_colored")
+end
+
+## ----------------------------------------------------------------------------
+# let
+#     for (Vl, D, ϵ, τ) = EXP_PARAMS
+#         MINDEX[:STATUS, Vl, D, ϵ, τ] == :death && continue
+#         dat = getdat([:DyMs], Vl, D, ϵ, τ)
+#         @show length(dat)
+#         break
+#     end
+# end
 
 ## ----------------------------------------------------------------------------
 # Bound Correlation

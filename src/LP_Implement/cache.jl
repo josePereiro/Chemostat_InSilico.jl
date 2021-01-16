@@ -13,8 +13,6 @@ function vgvatp_cache(M::SimModel; marginf::Float64 = 1.5,
     isfile(cfile) && return deserialize(cfile)
     
     # setup
-    # vatp_margin = abs(marginf * (10.0^(-M.δvatp)))
-    # vg_margin = abs(marginf * (10.0^(-M.δvg)))
     M = deepcopy(M)
     M.net.ub .*= marginf
     M.net.lb .*= marginf
@@ -25,8 +23,9 @@ function vgvatp_cache(M::SimModel; marginf::Float64 = 1.5,
     net_pool = [deepcopy(M.net) for th in 1:nth]
 
     # ranges
-    # vatp_range, vg_ranges = vatpvg_ranges(M; vatp_margin, vg_margin)
-    vatp_range, vg_ranges = vatpvg_ranges(M)
+    vatp_margin = abs(5 * (10.0^(-M.δvatp))) # To get 0 + ϵ values 
+    vg_margin = abs(5 * (10.0^(-M.δvg)))
+    vatp_range, vg_ranges = vatpvg_ranges(M; vatp_margin, vg_margin)
     i_vatp_range = vatp_range |> enumerate |> collect
     Nvatpvg = sum(length.(values(vg_ranges)))
     Nvatp = length(vatp_range)

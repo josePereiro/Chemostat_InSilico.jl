@@ -222,10 +222,10 @@ let
 
     end #  for (Vl, D, ϵ, τ)
 
-    unique!(INDEX[:Vls])
-    unique!(INDEX[:Ds])
-    unique!(INDEX[:ϵs])
-    unique!(INDEX[:τs])
+    sort!(unique!(INDEX[:Vls]))
+    sort!(unique!(INDEX[:Ds]))
+    sort!(unique!(INDEX[:ϵs]))
+    sort!(unique!(INDEX[:τs]))
 end
 
 ## ----------------------------------------------------------------------------

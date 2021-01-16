@@ -85,10 +85,11 @@ function plot_marginals(marginals, rxns = keys(marginals))
 end
 
 ## ----------------------------------------------------------------------------
-function plot_politope(M::SimModel; 
+function plot_politope!(p, M::SimModel; 
         hits_count = 3000,
         maxiters = 100 * hits_count,
-        pkwargs...
+        static_th = 0.8, rand_th = 0.1,
+        pkwargs = Dict(), skwargs = Dict()
     )
     
     vatp_range, vg_ranges = vatpvg_ranges(M)
@@ -98,7 +99,6 @@ function plot_politope(M::SimModel;
     mX, MX = lXgamma(M)
     vatpvgN = sum(length.(vg_ranges))
 
-    p = plot(xlabel = "vatp", ylabel = "vg")
     hits = 0
     iters = 0
     while vatpvgN > 1 && hits < hits_count && iters < maxiters
@@ -109,10 +109,13 @@ function plot_politope(M::SimModel;
         !haskey(M.Xb[vatp], vg) && continue
 
         lX = M.Xb[vatp][vg]
+        lX/MX < static_th && rand_th > rand() && continue
+
         color = :black
         ms = 10.0 * lX/MX
-        scatter!(p, [vatp], [vg]; color, label = "", ms, alpha = 0.2)
+        scatter!(p, [vatp], [vg]; color, label = "", ms, alpha = 0.2, skwargs...)
         hits += 1
     end
     plot!(p; pkwargs...)
 end
+plot_politope(M::SimModel; kwargs...) = plot_politope!(plot(xlabel = "vatp", ylabel = "vg"), M;  kwargs...)

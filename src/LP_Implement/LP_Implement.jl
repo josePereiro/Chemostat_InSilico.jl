@@ -10,6 +10,7 @@ using Plots
 import GR
 GR.inline("png")
 using Base.Threads
+using Random
 
 include("LP.jl")
 include("MetNets.jl")
