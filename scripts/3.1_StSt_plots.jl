@@ -10,6 +10,7 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
 
     using ProgressMeter
     using Plots
+    using Plots.Measures
 
     # Test
     # import GR
@@ -157,7 +158,10 @@ let
         ps = []
         sparams =(;alpha = 0.8, lw = 5, ylim = [0.0, Inf])
         gparams = (xaxis = nothing, yaxis = nothing, grid = false, 
-                titlefont = 10, xaxisfont = 10)
+                titlefont = 10, xaxisfont = 10,
+                bottom_margin = 5mm, top_margin = 8mm,
+                left_margin = 5mm, right_margin = 5mm
+            )
         for rxn in InLP.RXNS
             p = plot(;title = rxn, xlabel = "flx", ylabel = "prob", gparams...)
             for  MODsym = [FIXXED, HETER, HOMO]
@@ -185,7 +189,10 @@ let
     D = (MINDEX[:Ds] |> sort)[3]
     ϵs = MINDEX[:ϵs] |> sort
     sparams =(;alpha = 0.8, lw = 5, ylim = [0.0, Inf])
-    gparams = (grid = false, titlefont = 10, xaxisfont = 10)
+    gparams = (grid = false, titlefont = 10, xaxisfont = 10, 
+        bottom_margin = 5mm, top_margin = 8mm,
+        left_margin = 5mm, right_margin = 5mm
+    )
     
     ps = []
     for ϵ in ϵs
@@ -286,14 +293,18 @@ let
     ps = []
     for  MODsym in [FIXXED, HETER, HOMO]
         
-        p = plot(;title = "Exchs Correlation $(MODsym)", 
+        p = plot(;title = string(MODsym), 
             xlabel = "dym flxs", ylabel = "maxent flxs", 
-            legend = :topleft
+            legend = :topleft, titlefont = 10, xaxisfont = 10,
+            bottom_margin = 5mm, top_margin = 8mm,
+            left_margin = 5mm, right_margin = 5mm, 
         )
         
         color = MOD_COLORS[MODsym]
-        DYN_flxs = []
-        ME_flxs = []
+        DYN_flxs, DYN_errs = [], []
+        ME_flxs, ME_errs = [], []
+
+        @info "Doing" MODsym STST_POL
         
         for (Vl, D, ϵ, τ) in EXP_PARAMS
             MINDEX[:STATUS, Vl, D, ϵ, τ] == :death && continue
@@ -302,13 +313,18 @@ let
             
             for rxn in InLP.RXNS
                 DYN_flx = InLP.av(DyMs[rxn])
+                DYN_err = InLP.va(DyMs[rxn]) |> sqrt
                 ME_flx = InLP.av(MEMs[rxn])
+                ME_err = InLP.va(MEMs[rxn]) |> sqrt
                 (isnan(DYN_flx) || isnan(ME_flx)) && continue
 
                 push!(DYN_flxs, DYN_flx)
+                push!(DYN_errs, DYN_err)
                 push!(ME_flxs, ME_flx)
+                push!(ME_errs, ME_err)
             end
         end
+        
         xs = DYN_flxs
         ys = ME_flxs
         l = minimum(f.([xs; ys]))            
@@ -318,7 +334,9 @@ let
         plot!(p, [l - m, u + m], [l - m, u + m]; label = "", ls = :dash, alpha = 0.8)
         push!(ps, p)
     end
-    p = plot(ps...; layout = @layout([a b c]))
+    M, N = 1, 3
+    p = plot(ps...; layout = grid(M, N), 
+        size = [400 * N, 400 * M])
 
     # saving
     mysavefig(p, "flxs_corr")
