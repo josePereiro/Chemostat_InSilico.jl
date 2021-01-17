@@ -12,8 +12,8 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
     using Plots.PlotMeasures
     using InteractiveUtils
 
-    # import GR
-    # GR.inline("png")
+    import GR
+    GR.inline("png")
 
     import UtilsJL
     const UJL = UtilsJL
@@ -26,7 +26,7 @@ end
 
 ## ----------------------------------------------------------------------------
 # Meta
-fileid = "2.1"
+fileid = "2.2"
 fig_path(fname) = joinpath(InLP.DYN_FIGURES_DIR, fname)
 Base.first(v::Vector, i) = v[firstindex(v):(min(lastindex(v), i))]
 Base.last(v::Vector, i) = v[max(firstindex(v), length(v) - i + 1):lastindex(v)]

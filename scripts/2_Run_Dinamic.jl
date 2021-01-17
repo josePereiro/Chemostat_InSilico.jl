@@ -8,13 +8,6 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
     const InLP = InCh.LP_Implement
     const InU = InCh.Utilities
 
-    using ProgressMeter
-    using Plots
-
-    # Test
-    # import GR
-    # GR.inline("png")
-
     import UtilsJL
     const UJL = UtilsJL
 
@@ -27,18 +20,13 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
 
 end
 
-## ---------------------------------------------------------
+## -----------------------------------------------------------------------------------------------
 # Tools
 const WLOCK = ReentrantLock()
-PROG_FIG_DIR = joinpath(InCh.DYN_FIGURES_DIR, "progress")
-DATA_DIR = InCh.DYN_DATA_DIR
-DATA_FILE_PREFFIX = "dyn_dat"
+const DATA_DIR = InCh.DYN_DATA_DIR
+const DATA_FILE_PREFFIX = "dyn_dat"
 dat_file(;sim_params...) = joinpath(DATA_DIR, 
     InLP.mysavename(DATA_FILE_PREFFIX, "jls"; sim_params...))
-fig_file(;sim_params...) = joinpath(PROG_FIG_DIR, 
-    InLP.mysavename("fig", "png"; sim_params...))
-
-make_dirs() = mkpath.([PROG_FIG_DIR, DATA_DIR])
 
 function check_stst(ts; stst_window, stst_th)
     @views for sym in [:X_ts, :sl_ts, :sg_ts, :D_ts]
@@ -53,53 +41,13 @@ function check_stst(ts; stst_window, stst_th)
     return true
 end
 
-## ---------------------------------------------------------
-# Plot progress coroutine
-const MTIMES = Dict()
-function plot_progress(mtimes = MTIMES; force = false)
-    for file in readdir(DATA_DIR)
-        !startswith(file, DATA_FILE_PREFFIX) && continue
-        
-        cfile = joinpath(DATA_DIR, file)
-
-        currt = mtime(cfile)
-        lastt = get!(mtimes, file, currt)
-
-        # save fig
-        if lastt != currt || force
-            status, TS, M = deserialize(cfile)
-            p = InLP.plot_res(M, TS)
-            fname = replace(file, DATA_FILE_PREFFIX => "fig")
-            fname, _ = splitext(fname)
-            fname = string(fname, ".png")
-
-            lock(WLOCK) do
-                @info "Plotting progress" fname now() threadid()
-                println()
-            end
-            
-            ffile = joinpath(PROG_FIG_DIR, fname)
-            savefig(p, ffile)
-            mtimes[file] = currt
-
-        end
-    end
-end
-@async let
-    sleep(120) # Do not interfere at start
-    while true
-        sleep(rand(30:60))
-        plot_progress()
-    end
-end
-
-## ---------------------------------------------------------
+## ----------------------------------------------------------------------------
 # Simulation 
 INDEX = UJL.DictTree() # To Store relevant information
 @time let
     
     # setup
-    make_dirs()
+    mkpath(DATA_DIR)
 
     # base model
     M0 = INDEX[:M0] = InLP.SimModel(;
@@ -140,15 +88,16 @@ INDEX = UJL.DictTree() # To Store relevant information
     @info "Computing $(N) iterations"
     println() 
 
-    c = 0
+    gc = 0
     @threads for (Vl, D, ϵ, τ) in params
 
         # This must identify the iteration
         sim_params = (;D, ϵ, τ, Vl, M0.Δt, M0.σ, M0.cg)
 
         # Say hello
+        c = nothing
         lock(WLOCK) do
-            c += 1
+            gc += 1; c = gc
             @info "Starting $c/$N ..." Vl, D, ϵ, τ now() threadid()
             println()
         end
@@ -215,7 +164,7 @@ INDEX = UJL.DictTree() # To Store relevant information
                 return finished
             end
             InLP.run_simulation!(M; on_iter, LP_cache, verbose = false, force = false)
-        end
+        end # if status == :running
         
         lock(WLOCK) do
             @info "Finished $c/$N ... " M.X M.sl M.sg tslen status Vl, D, ϵ, τ now() threadid()
@@ -223,10 +172,9 @@ INDEX = UJL.DictTree() # To Store relevant information
             println()
             GC.gc()
         end
-    end
-    plot_progress(;force = true)
+    end # @threads for (Vl, D, ϵ, τ)
 end
 
-## ----------------------------------------------------------------------------
+## -----------------------------------------------------------------------------------------------
 # SAVING
 UJL.save_data(InCh.DYN_DATA_INDEX_FILE, INDEX)
