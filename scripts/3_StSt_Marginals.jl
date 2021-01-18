@@ -16,38 +16,13 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
 end
 
 ## ----------------------------------------------------------------------------
-let
-    M0 = InLP.SimModel()
-    box = InLP.pol_box(M0)
-    @show box
-    LP_cache = InLP.vgvatp_cache(M0; marginf = 1.5)
-    vatps = keys(LP_cache)
-    vatpbs = (minimum(vatps), maximum(vatps))
-    @show vatpbs
-end
-
-## ----------------------------------------------------------------------------
 # Load and clear DAT
 # DINDEX [Vl, D, ϵ, τ] 
 DINDEX = UJL.load_data(InCh.DYN_DATA_INDEX_FILE) # Dynamic index
 DATA_FILE_PREFFIX = "marginal_dat"
 dat_file(;sim_params...) = joinpath(InCh.DYN_DATA_DIR, 
     InLP.mysavename(DATA_FILE_PREFFIX, "jls"; sim_params...))
-
-function getdat(dk, indexks...)
-    FILE = DINDEX[:DFILE, indexks...]
-    if FILE isa UJL.ITERABLE
-        dat = []
-        for F in FILE
-            datum = deserialize(F)[dk]
-            push!(dat, datum)
-        end
-        return dat
-    else
-        dat = deserialize(FILE)
-        return dat[dk]
-    end
-end
+idxdat(dk, indexks...) = InLP.idxdat(DINDEX, dk, indexks...)
 
 ## ----------------------------------------------------------------------------
 # Prepare network
@@ -55,8 +30,8 @@ const WLOCK = ReentrantLock()
 const STST_POL = :STST_POL   # Use polytope computed from chemostat stst assertion
 const DYN_POL = :DYN_POL     # Use dynamic polytope
 const HOMO = :HOMO           # Do not use extra constraints
-const HETER = :HETER         # Match ME and Dy biom average
-const FIXXED = :FIXXED       # Fix biom around observed
+const EXPECTED = :EXPECTED   # Match ME and Dy biom average
+const BOUNDED = :BOUNDED     # Fix biom around observed
 
 function prepare_pol!(M, POLTsym)
     net = M.net
@@ -84,7 +59,7 @@ function run_model!(M, MODsym; LP_cache, δ, δμ, DyBiom, verbose = true)
     y = InLP.Y # atp/biomass yield
     maxentf(beta) = (vatp, vg) -> exp(beta * vatp/y)
 
-    if MODsym == HETER
+    if MODsym == EXPECTED
         # Gradient descent
         target = DyBiom
         x0 = 1.5e3
@@ -112,7 +87,7 @@ function run_model!(M, MODsym; LP_cache, δ, δμ, DyBiom, verbose = true)
         beta0 = 0.0
     end
 
-    if MODsym == FIXXED
+    if MODsym == BOUNDED
         # Fix biomass to observable
         net = M.net
         net.ub[M.obj_idx] = DyBiom * (1.0 + δμ)
@@ -132,15 +107,13 @@ INDEX = UJL.DictTree() # marginals dat
 let
 
     δ = INDEX[:δ]   = 0.08 # marginal discretization factor
-    δμ = INDEX[:δμ] = 0.01 # FIXXED biomass variance
+    δμ = INDEX[:δμ] = 0.01 # BOUNDED biomass variance
 
     N = prod(length.(DINDEX[[:Vls, :Ds, :ϵs, :τs]]))
-    c = 0
+    gc = 0
 
-    INDEX[:Vls] = []
-    INDEX[:Ds] = []
-    INDEX[:ϵs] = []
-    INDEX[:τs] = []
+    INDEX[:Vls], INDEX[:Ds] = [], []
+    INDEX[:ϵs], INDEX[:τs] = [], []
     
     params = Iterators.product(DINDEX[[:Vls, :Ds, :ϵs, :τs]]...) |> collect |> shuffle!
     @threads for (Vl, D, ϵ, τ) in params
@@ -148,27 +121,35 @@ let
         
         ## ----------------------------------------------------------------------------
         MDAT = UJL.DictTree()
-        M0 = getdat(:M, Vl, D, ϵ, τ)
+        M0 = idxdat(:M, Vl, D, ϵ, τ)
+        status = idxdat(:status, Vl, D, ϵ, τ)
         LP_cache = nothing
         
+        c = nothing
         lock(WLOCK) do
-            c += 1
+            gc += 1; c = gc
             LP_cache = InLP.vgvatp_cache(M0; marginf = 1.5)
-            push!(INDEX[:Vls], Vl)
-            push!(INDEX[:Ds], D)
-            push!(INDEX[:ϵs], ϵ)
-            push!(INDEX[:τs], τ)
+            push!(INDEX[:Vls], Vl); push!(INDEX[:Ds], D)
+            push!(INDEX[:ϵs], ϵ); push!(INDEX[:τs], τ)
             INDEX[:DFILE, Vl, D, ϵ, τ] = cfile
-            INDEX[:STATUS, Vl, D, ϵ, τ] = M0.X < DINDEX[:death_th] ? :death : :stst
-            @info "Doing $c/$N ... " Vl, D, ϵ, τ M0.X threadid()
+            INDEX[:STATUS, Vl, D, ϵ, τ] = status
+            @info "Doing $c/$N ... " Vl, D, ϵ, τ M0.X status threadid()
             println()
         end
-        INDEX[:STATUS, Vl, D, ϵ, τ] == :death && continue  # Exclude deaths
+        
+        ## ----------------------------------------------------------------------------
+        if status != :stst # Only accept steady states
+            lock(WLOCK) do
+                @info "Not a Stst (Skipping) $c/$N ... " Vl, D, ϵ, τ M0.X status threadid()
+                println()
+            end
+            continue 
+        end
         
         ## ----------------------------------------------------------------------------
         if isfile(cfile)
             lock(WLOCK) do
-                @info "Cache found (Skipping)" Vl, D, ϵ, τ basename(cfile) threadid()
+                @info "Cache found (Skipping) $c/$N ... " Vl, D, ϵ, τ status basename(cfile) threadid()
                 println()
             end
             continue
@@ -186,7 +167,7 @@ let
 
         ## ----------------------------------------------------------------------------
         # MaxEnt marginals
-        for MODsym in [HOMO, FIXXED, HETER]
+        for MODsym in [HOMO, BOUNDED, EXPECTED]
             for POLTsym in [STST_POL, DYN_POL]
                 
                 lock(WLOCK) do
@@ -222,10 +203,8 @@ let
 
     end #  for (Vl, D, ϵ, τ)
 
-    sort!(unique!(INDEX[:Vls]))
-    sort!(unique!(INDEX[:Ds]))
-    sort!(unique!(INDEX[:ϵs]))
-    sort!(unique!(INDEX[:τs]))
+    sort!(unique!(INDEX[:Vls])); sort!(unique!(INDEX[:Ds]))
+    sort!(unique!(INDEX[:ϵs])); sort!(unique!(INDEX[:τs]))
 end
 
 ## ----------------------------------------------------------------------------

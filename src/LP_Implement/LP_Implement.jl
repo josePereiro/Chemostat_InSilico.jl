@@ -3,7 +3,7 @@ module LP_Implement
 import MathProgBase.HighLevelInterface: linprog
 import Clp: ClpSolver
 using ..Chemostat_InSilico
-import UtilsJL: mysavename, get_chuncks, err_str
+import UtilsJL: mysavename, get_chuncks, err_str, ITERABLE
 import ProgressMeter: Progress, update!, next!, finish!
 import Serialization: serialize, deserialize
 using Plots
@@ -22,6 +22,7 @@ include("cache.jl")
 include("board_utils.jl")
 include("run_simulation.jl")
 include("marginals.jl")
+include("idxdat.jl")
 
 export MAX_SENSE, MIN_SENSE, fba, fva
 export MetNet, ToyModel, rxnindex, metindex, fix!, fixxing, Δv, U, L, ABS_MAX_BOUND

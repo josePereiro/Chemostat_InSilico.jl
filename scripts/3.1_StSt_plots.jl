@@ -62,21 +62,7 @@ POL_STYLE = Dict(
 MINDEX = UJL.load_data(InCh.MARGINALS_INDEX_FILE)
 POLTsym = STST_POL
 EXP_PARAMS = Iterators.product(MINDEX[[:Vls, :Ds, :ϵs, :τs]]...);
-
-function getdat(dk, dks...)
-    FILE = MINDEX[:DFILE, dks...]
-    if FILE isa UJL.ITERABLE
-        dat = []
-        for F in FILE
-            datum = deserialize(F)[dk...]
-            push!(dat, datum)
-        end
-        return dat
-    else
-        dat = deserialize(FILE)
-        return dat[dk...]
-    end
-end
+idxdat(dk, indexks...) = InLP.idxdat(MINDEX, dk, indexks...)
 
 ## ----------------------------------------------------------------------------
 # PLOTS
@@ -93,7 +79,7 @@ end
 # Plot functions
 function plot_pol!(p, POLTsym, MODsym, Vl, D, ϵ, τ; sparams...)
     
-    vatp_range, vg_ranges = getdat([MODsym, POLTsym, :POL], Vl, D, ϵ, τ)
+    vatp_range, vg_ranges = idxdat([MODsym, POLTsym, :POL], Vl, D, ϵ, τ)
     vatps, vgLs, vgUs = [], [], []
     
     for (vatpi, vatp) in enumerate(vatp_range)
@@ -116,13 +102,13 @@ end
 function plot_marginals!(p, MODsyms, POLTsym, rxn, Vl, D, ϵ, τ; sparams...)
 
     ls = POL_STYLE[POLTsym]
-    DyMs = getdat([:DyMs], Vl, D, ϵ, τ)
+    DyMs = idxdat([:DyMs], Vl, D, ϵ, τ)
     plot!(p, DyMs[rxn]; label = "", sparams..., color = :black)
     
     # Marginals
     for MODsym in MODsyms
         color = MOD_COLORS[MODsym]
-        MEMs = getdat([MODsym, POLTsym, :MEMs], Vl, D, ϵ, τ)
+        MEMs = idxdat([MODsym, POLTsym, :MEMs], Vl, D, ϵ, τ)
         plot!(p, MEMs[rxn]; label = "", color, sparams...)
         PS[MODsym, POLTsym, :POL, Vl, D, ϵ] = deepcopy(p)
     end
@@ -229,7 +215,7 @@ let
         beta_ser = []
         for ϵ in ϵs
             MINDEX[:STATUS, Vl, D, ϵ, τ] == :death && continue
-            beta = getdat([:HETER, POLTsym, :beta0], Vl, D, ϵ, τ)
+            beta = idxdat([:HETER, POLTsym, :beta0], Vl, D, ϵ, τ)
             push!(ϵ_ser, ϵ)
             push!(beta_ser, beta)
         end
@@ -242,7 +228,7 @@ end
 # let
 #     for (Vl, D, ϵ, τ) = EXP_PARAMS
 #         MINDEX[:STATUS, Vl, D, ϵ, τ] == :death && continue
-#         dat = getdat([:DyMs], Vl, D, ϵ, τ)
+#         dat = idxdat([:DyMs], Vl, D, ϵ, τ)
 #         @show length(dat)
 #         break
 #     end
@@ -262,11 +248,11 @@ let
         MINDEX[:STATUS, Vl, D, ϵ, τ] == :death && continue
 
         for  MODsym in [FIXXED, HETER, HOMO]
-            M = getdat([MODsym, STST_POL, :M], Vl, D, ϵ, τ)
+            M = idxdat([MODsym, STST_POL, :M], Vl, D, ϵ, τ)
             push!(STST_vgubs, M.net.ub[M.vg_idx])
             push!(STST_vlubs, M.net.ub[M.vl_idx])
 
-            M = getdat([MODsym, DYN_POL, :M], Vl, D, ϵ, τ)
+            M = idxdat([MODsym, DYN_POL, :M], Vl, D, ϵ, τ)
             push!(DYN_vgubs, M.net.ub[M.vg_idx])
             push!(DYN_vlubs, M.net.ub[M.vl_idx])
         end
@@ -308,8 +294,8 @@ let
         
         for (Vl, D, ϵ, τ) in EXP_PARAMS
             MINDEX[:STATUS, Vl, D, ϵ, τ] == :death && continue
-            DyMs = getdat([:DyMs], Vl, D, ϵ, τ)
-            MEMs = getdat([MODsym, STST_POL, :MEMs], Vl, D, ϵ, τ)
+            DyMs = idxdat([:DyMs], Vl, D, ϵ, τ)
+            MEMs = idxdat([MODsym, STST_POL, :MEMs], Vl, D, ϵ, τ)
             
             for rxn in InLP.RXNS
                 DYN_flx = InLP.av(DyMs[rxn])

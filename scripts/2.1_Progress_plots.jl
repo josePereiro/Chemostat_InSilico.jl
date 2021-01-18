@@ -23,7 +23,6 @@ end
 const DATA_DIR = InCh.DYN_DATA_DIR
 const DATA_FILE_PREFFIX = "dyn_dat"
 const PROG_FIG_DIR = joinpath(InCh.DYN_FIGURES_DIR, "progress")
-const MTIMES = Dict()
 
 while true
     
@@ -32,26 +31,28 @@ while true
 
     for file in readdir(DATA_DIR)
         !startswith(file, DATA_FILE_PREFFIX) && continue
-        
-        cfile = joinpath(DATA_DIR, file)
+    
+        # dat file
+        datfile = joinpath(DATA_DIR, file)
 
-        currt = mtime(cfile)
-        lastt = get!(MTIMES, file, -Inf)
+        # fig file
+        fname = replace(file, DATA_FILE_PREFFIX => "fig")
+        fname, _ = splitext(fname)
+        fname = string(fname, ".png")
+        figfile = joinpath(PROG_FIG_DIR, fname)
 
-        # save fig
-        if lastt != currt
-            status, TS, M = deserialize(cfile)
-            fname = replace(file, DATA_FILE_PREFFIX => "fig")
-            fname, _ = splitext(fname)
-            fname = string(fname, ".png")
-            ffile = joinpath(PROG_FIG_DIR, fname)
+        if !isfile(figfile) || mtime(datfile) > mtime(figfile)
+            # save fig
+            status, TS, M = deserialize(datfile)
             
-            @info "Plotting progress" fname now()
+            @info "Updating progress" fname now()
             println()
             
             p = InLP.plot_res(M, TS)
-            savefig(p, ffile)
-            MTIMES[file] = currt
+            savefig(p, figfile)
+        else
+            @info "Up to date" fname now()
+            println()
         end
     end
     sleep(rand(3:8))
