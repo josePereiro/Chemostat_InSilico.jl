@@ -3,7 +3,7 @@ module LP_Implement
 import MathProgBase.HighLevelInterface: linprog
 import Clp: ClpSolver
 using ..Chemostat_InSilico
-import UtilsJL: mysavename, get_chuncks, err_str, ITERABLE
+import UtilsJL: mysavename, get_chuncks, err_str, ITERABLE, make_grid, DictTree, _auto_layout
 import ProgressMeter: Progress, update!, next!, finish!
 import Serialization: serialize, deserialize
 using Plots
@@ -11,6 +11,7 @@ import GR
 GR.inline("png")
 using Base.Threads
 using Random
+import FileIO
 
 include("LP.jl")
 include("MetNets.jl")
@@ -23,6 +24,7 @@ include("board_utils.jl")
 include("run_simulation.jl")
 include("marginals.jl")
 include("idxdat.jl")
+include("mysavefig.jl")
 
 export MAX_SENSE, MIN_SENSE, fba, fva
 export MetNet, ToyModel, rxnindex, metindex, fix!, fixxing, Δv, U, L, ABS_MAX_BOUND

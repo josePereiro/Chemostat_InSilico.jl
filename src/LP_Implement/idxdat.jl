@@ -1,6 +1,5 @@
 # TODO: package this
-FCACHED = nothing
-DATCACHED = nothing
+const IDXDAT_CACHE = Dict()
 function idxdat(INDEX, dk, indexks...)
     FILE = INDEX[:DFILE, indexks...]
     if FILE isa ITERABLE
@@ -11,13 +10,14 @@ function idxdat(INDEX, dk, indexks...)
         end
         return dat
     else
-        if FILE == FCACHED
-            return DATCACHED[dk...]
-        else
-            global FCACHED = FILE
+        iscached = FILE == get(IDXDAT_CACHE, :FCACHED, nothing)
+        return iscached ?
+            IDXDAT_CACHE[:DATCACHED][dk...] :
+        begin
             dat = deserialize(FILE)
-            global DATCACHED = dat
-            return dat[dk...]
+            IDXDAT_CACHE[:FCACHED] = FILE
+            IDXDAT_CACHE[:DATCACHED] = dat
+            dat[dk...]
         end
     end
 end

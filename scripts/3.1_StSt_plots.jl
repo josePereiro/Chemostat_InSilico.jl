@@ -13,8 +13,8 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
     using Plots.Measures
 
     # Test
-    # import GR
-    # GR.inline("png")
+    import GR
+    GR.inline("png")
 
     import UtilsJL
     const UJL = UtilsJL
@@ -26,6 +26,7 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
     using InteractiveUtils
     using Random
     using Colors
+    using FileIO
 
 end
 
@@ -66,14 +67,8 @@ idxdat(dk, indexks...) = InLP.idxdat(MINDEX, dk, indexks...)
 
 ## ----------------------------------------------------------------------------
 # PLOTS
-PS = UJL.DictTree()
-function mysavefig(p, pname; params...)
-    pname = UJL.mysavename(pname, "png"; params...)
-    fname = joinpath(InLP.DYN_FIGURES_DIR, string(fileid, "_", pname))
-    savefig(p, fname)
-    PS[pname] = deepcopy(p)
-    @info "Plotting" fname
-end
+mysavefig(p, pname; params...) = 
+    InLP.mysavefig(p, pname, InLP.DYN_FIGURES_DIR, fileid; params...)
 
 ## ----------------------------------------------------------------------------
 # Plot functions
@@ -95,7 +90,6 @@ function plot_pol!(p, POLTsym, MODsym, Vl, D, ϵ, τ; sparams...)
     ls = POL_STYLE[POLTsym]
     plot!(p, [vatps], [vgLs]; label = "", ls, alpha = 0.4, color, lw = 3, sparams...)
     plot!(p, [vatps], [vgUs]; label = "", ls, alpha = 0.4, color, lw = 3, sparams...)
-    PS[MODsym, POLTsym, :POL, Vl, D, ϵ] = deepcopy(p)
     p
 end
 
@@ -110,7 +104,6 @@ function plot_marginals!(p, MODsyms, POLTsym, rxn, Vl, D, ϵ, τ; sparams...)
         color = MOD_COLORS[MODsym]
         MEMs = idxdat([MODsym, POLTsym, :MEMs], Vl, D, ϵ, τ)
         plot!(p, MEMs[rxn]; label = "", color, sparams...)
-        PS[MODsym, POLTsym, :POL, Vl, D, ϵ] = deepcopy(p)
     end
     p
 end
@@ -121,16 +114,11 @@ plot_marginals!(p, MODsyms::Symbol, POLTsym, rxn, Vl, D, ϵ, τ; sparams...) =
 ## ----------------------------------------------------------------------------
 # all Marginals
 let
-   
     for (Vl, D, ϵ, τ) in EXP_PARAMS
         MINDEX[:STATUS, Vl, D, ϵ, τ] != :stst && continue
-        ps = []
+        ps = Plots.Plot[]
         sparams =(;alpha = 0.8, lw = 5, ylim = [0.0, Inf])
-        gparams = (xaxis = nothing, yaxis = nothing, grid = false, 
-                titlefont = 10, xaxisfont = 10,
-                bottom_margin = 5mm, top_margin = 8mm,
-                left_margin = 5mm, right_margin = 5mm
-            )
+        gparams = (xaxis = nothing, yaxis = nothing, grid = false)
         for rxn in InLP.RXNS
             p = plot(;title = rxn, xlabel = "flx", ylabel = "prob", gparams...)
             for  MODsym = [BOUNDED, EXPECTED, HOMO]
@@ -145,46 +133,22 @@ let
         plot_pol!(p, POLTsym, BOUNDED, Vl, D, ϵ, τ; sparams...)
         push!(ps, p)
         
-        p = plot(ps...; layout = length(ps))
-        mysavefig(p, "Marginals_$(POLTsym)_"; Vl, D, ϵ)
+        
+        mysavefig(ps, "Marginals_$(POLTsym)_"; Vl, D, ϵ)
     end
 end
 
 ## ----------------------------------------------------------------------------
-# ITERABLE = InLP.ITERABLE
-# FCACHED = nothing
-# DATCACHED = nothing
-# function idxdat(INDEX, dk, indexks...)
-#     FILE = INDEX[:DFILE, indexks...]
-#     if FILE isa ITERABLE
-#         dat = []
-#         for F in FILE
-#             datum = deserialize(F)[dk...]
-#             push!(dat, datum)
-#         end
-#         return dat
-#     else
-#         if FILE == FCACHED
-#             return DATCACHED[dk]
-#         else
-#             global FCACHED = FILE
-#             dat = deserialize(FILE)
-#             global DATCACHED = dat
-#             return dat[dk...]
-#         end
-#     end
+# let
+#     Vl = MINDEX[:Vls] |> first
+#     τ = MINDEX[:τs] |> first
+#     D = (MINDEX[:Ds] |> sort)[6]
+#     ϵ = MINDEX[:ϵs][2]
+#     @show MINDEX[:STATUS, Vl, D, ϵ, τ]
+#     vatp_range, vg_ranges = idxdat([EXPECTED, :STST_POL, :MEMs], Vl, D, ϵ, τ)
+#     # dat = deserialize(MINDEX[:DFILE, Vl, D, ϵ, τ]);
+#     # dat[[EXPECTED, :STST_POL, :POL]...] |> keys |> collect
 # end
-## ----------------------------------------------------------------------------
-let
-    Vl = MINDEX[:Vls] |> first
-    τ = MINDEX[:τs] |> first
-    D = (MINDEX[:Ds] |> sort)[6]
-    ϵ = MINDEX[:ϵs][2]
-    @show MINDEX[:STATUS, Vl, D, ϵ, τ]
-    vatp_range, vg_ranges = idxdat([EXPECTED, :STST_POL, :MEMs], Vl, D, ϵ, τ)
-    # dat = deserialize(MINDEX[:DFILE, Vl, D, ϵ, τ]);
-    # dat[[EXPECTED, :STST_POL, :POL]...] |> keys |> collect
-end
 
 ## ----------------------------------------------------------------------------
 # selected Marginals
@@ -194,12 +158,9 @@ let
     D = (MINDEX[:Ds] |> sort)[9]
     ϵs = MINDEX[:ϵs] |> sort
     sparams =(;alpha = 0.8, lw = 5, ylim = [0.0, Inf])
-    gparams = (grid = false, titlefont = 10, xaxisfont = 10, 
-        bottom_margin = 5mm, top_margin = 8mm,
-        left_margin = 5mm, right_margin = 5mm
-    )
+    gparams = (;grid = false)
     
-    ps = []
+    ps = Plots.Plot[]
     for ϵ in ϵs
         for rxn in ["gt", "vatp"]
             MINDEX[:STATUS, Vl, D, ϵ, τ] != :stst && continue
@@ -215,10 +176,8 @@ let
             push!(ps, p)
         end
     end
-    M, N = 4, 2
-    p = plot(ps...; layout = grid(M, N), 
-        size = [400 * N, 300 * M])
-    mysavefig(p, "dyn_vs_model_margials_$(POLTsym)"; Vl, D, τ)
+    layout = 4, 2
+    mysavefig(ps, "dyn_vs_model_margials_$(POLTsym)"; layout, Vl, D, τ)
 end
 
 ## ----------------------------------------------------------------------------
@@ -295,20 +254,18 @@ end
 let
     f(x) = log10(abs(x) + 1e-8)
     
-    ps = []
+    ps = Plots.Plot[]
     for  MODsym in [BOUNDED, EXPECTED, HOMO]
         
         p = plot(;title = string(MODsym), 
             xlabel = "dym flxs", ylabel = "maxent flxs", 
-            legend = :topleft, titlefont = 10, xaxisfont = 10,
-            bottom_margin = 5mm, top_margin = 8mm,
-            left_margin = 5mm, right_margin = 5mm, 
+            legend = :topleft
         )
         
         color = MOD_COLORS[MODsym]
         DYN_flxs, DYN_errs = [], []
         ME_flxs, ME_errs = [], []
-
+        
         @info "Doing" MODsym STST_POL
         
         for (Vl, D, ϵ, τ) in EXP_PARAMS
@@ -339,11 +296,8 @@ let
         plot!(p, [l - m, u + m], [l - m, u + m]; label = "", ls = :dash, alpha = 0.8)
         push!(ps, p)
     end
-    M, N = 1, 3
-    p = plot(ps...; layout = grid(M, N), 
-        size = [400 * N, 400 * M])
-
     # saving
-    mysavefig(p, "flxs_corr")
+    layout = 1, 3
+    mysavefig(ps, "flxs_corr"; layout)
     
 end

@@ -40,31 +40,18 @@ idxdat(dk, indexks...) = InLP.idxdat(INDEX, dk, indexks...)
 
 ## ----------------------------------------------------------------------------
 # PLOTS
-PS = UJL.DictTree()
-function mysavefig(p, pname; params...)
-    pname = UJL.mysavename(pname, "png"; params...)
-    fname = joinpath(InLP.DYN_FIGURES_DIR, string(fileid, "_", pname))
-    PS[pname] = deepcopy(p)
-    savefig(p, fname)
-    @info "Plotting" fname
-end
-function mysavefig(ps::Vector, pname; layout, margin = 10, params...)
-    pname = UJL.mysavename(pname, "png"; params...)
-    fname = joinpath(InLP.DYN_FIGURES_DIR, string(fileid, "_", pname))
-    grid = UtilsJL.make_grid(ps; layout, margin)
-    PS[pname] = deepcopy(grid)
-    FileIO.save(fname, grid)
-    @info "Plotting" fname
-end
+mysavefig(p, pname; params...) = 
+    InLP.mysavefig(p, pname, InLP.DYN_FIGURES_DIR, fileid; params...)
 
 # ## ----------------------------------------------------------------------------
+# Dev
 # let
 #     Vl = INDEX[:Vls] |> first
 #     τ =  INDEX[:τs] |> first
 #     Ds =  INDEX[:Ds] |> reverse
 #     for ϵ in INDEX[:ϵs], D in Ds
 #         @time begin
-#             M = idxdat(:M, Vl, D, ϵ, τ)
+#             M = idxdat([:M], Vl, D, ϵ, τ)
 #             status = idxdat(:status, Vl, D, ϵ, τ)
 #             @info "Loaded Test" Vl, D, ϵ, τ status
 #         end
@@ -101,7 +88,7 @@ end
         
         # Other polytopes
         for (D, color) in zip(Ds, colors)
-            M = idxdat(:M, Vl, D, ϵ, τ)
+            M = idxdat([:M], Vl, D, ϵ, τ)
             status = idxdat(:status, Vl, D, ϵ, τ)
             status != :stst && continue
             @info "Doing" Vl, D, ϵ, τ
@@ -144,8 +131,8 @@ let
             end
         end
         
-        M, N = length(fields), length(Ds)
-        mysavefig(ps, "time_series_vs_ϵ_vs_D"; layout = (M, N), Vl, τ)
+        layout = length(fields), length(Ds)
+        mysavefig(ps, "time_series_vs_ϵ_vs_D"; layout, Vl, τ)
     end
 end
 
@@ -237,13 +224,13 @@ let
     end # for D in Ds
     
     # saving
-    M, N = 1, 3
-    mysavefig(vatp_plots, "dyn_vatp_marginals_vs_D_vs_ϵ"; layout = (M, N))
-    mysavefig(vg_plots, "dyn_vg_marginals_vs_D_vs_ϵ"; layout = (M, N))
+    layout = 1, 3
+    mysavefig(vatp_plots, "dyn_vatp_marginals_vs_D_vs_ϵ"; layout)
+    mysavefig(vg_plots, "dyn_vg_marginals_vs_D_vs_ϵ"; layout)
     
     ps = Plots.Plot[vatp_plots; vg_plots]
-    M, N = 2, 3
-    mysavefig(ps, "dyn_marginals_vs_D_vs_ϵ"; layout = (M, N))
+    layout = 2, 3
+    mysavefig(ps, "dyn_marginals_vs_D_vs_ϵ"; layout)
 
 end
 
