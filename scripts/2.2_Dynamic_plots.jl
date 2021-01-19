@@ -22,6 +22,7 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
     using Statistics
     using Dates
     using Random
+    using FileIO
 end
 
 ## ----------------------------------------------------------------------------
@@ -45,6 +46,14 @@ function mysavefig(p, pname; params...)
     fname = joinpath(InLP.DYN_FIGURES_DIR, string(fileid, "_", pname))
     PS[pname] = deepcopy(p)
     savefig(p, fname)
+    @info "Plotting" fname
+end
+function mysavefig(ps::Vector, pname; layout, margin = 10, params...)
+    pname = UJL.mysavename(pname, "png"; params...)
+    fname = joinpath(InLP.DYN_FIGURES_DIR, string(fileid, "_", pname))
+    grid = UtilsJL.make_grid(ps; layout, margin)
+    PS[pname] = deepcopy(grid)
+    FileIO.save(fname, grid)
     @info "Plotting" fname
 end
 
@@ -77,15 +86,15 @@ end
         # Find bigger polytope
         G = (;vgub = -Inf)
         for (D, color) in zip(Ds, colors)
-            M = idxdat(:M, Vl, D, ϵ, τ)
-            status = idxdat(:status, Vl, D, ϵ, τ)
+            M = idxdat([:M], Vl, D, ϵ, τ)
+            status = idxdat([:status], Vl, D, ϵ, τ)
             status != :stst && continue
             vgub = M.net.ub[M.vg_idx]
             G.vgub < vgub && (G = (;D, vgub, color))
         end
 
         # full polytope
-        M = idxdat(:M, Vl, G.D, ϵ, τ)
+        M = idxdat([:M], Vl, G.D, ϵ, τ)
         InLP.plot_politope!(p, M; rand_th = 0.0, 
             skwargs = (;G.color, alpha = 0.4)
         )
@@ -116,14 +125,14 @@ let
     f = identity
     Ds = INDEX[:Ds][1:6:18]
     fields = [:X_ts, :sg_ts, :sl_ts]
-    cparams = (;titlefont = 12, lw = 4, alpha = 0.7)
+    cparams = (;lw = 4, alpha = 0.7)
 
     for Vl in INDEX[:Vls], τ in INDEX[:τs]
-        ps = []
+        ps = Plots.Plot[]
         for field in fields
             for D in Ds
                 ylabel = replace(string(field), "_ts" => "")
-                vals = getfield.(idxdat(:TS, Vl, D, INDEX[:ϵs], τ), field) 
+                vals = getfield.(idxdat([:TS], Vl, D, INDEX[:ϵs], τ), field) 
                 ylim = InLP.lims(marginf, vals...)
                 
                 p = plot(;xlabel = "time", ylabel, 
@@ -136,9 +145,7 @@ let
         end
         
         M, N = length(fields), length(Ds)
-        p = plot(ps...; layout = grid(M, N), 
-            legend = false, size = [400 * M, 300 * N])
-        mysavefig(p, "time_series_vs_ϵ_vs_D"; Vl, τ)
+        mysavefig(ps, "time_series_vs_ϵ_vs_D"; layout = (M, N), Vl, τ)
     end
 end
 
@@ -182,8 +189,8 @@ let
     τ =  INDEX[:τs] |> first
     
     write_lock = ReentrantLock()
-    vg_plots = Vector(undef, length(Ds))
-    vatp_plots = Vector(undef, length(Ds))
+    vg_plots = Vector{Plots.Plot}(undef, length(Ds))
+    vatp_plots = Vector{Plots.Plot}(undef, length(Ds))
 
     @time for (Di, D) in Ds |> enumerate 
 
@@ -191,7 +198,7 @@ let
         vg_plot = plot(xlabel = "vg", ylabel = "pdf", title = string("D: ", UJL.sci(D)))
 
         for ϵ in INDEX[:ϵs] |> sort |> reverse
-            M = idxdat(:M, Vl, D, ϵ, τ)
+            M = idxdat([:M], Vl, D, ϵ, τ)
 
             vatp_range, vg_ranges = InLP.vatpvg_ranges(M)
 
@@ -216,8 +223,7 @@ let
             end
 
             # marginals
-            lparams = (;label = ϵ, lw = 4, alpha = 0.7, color =  Gray(ϵ * 0.8), 
-                )
+            lparams = (;label = ϵ, lw = 4, alpha = 0.7, color =  Gray(ϵ * 0.8), legend = false)
             plot!(vatp_plot, vatp_range, f(vatp_hist ./ M.X); lparams...)
             plot!(vg_plot, vg_range, f(vg_hist ./ M.X); lparams...)
         end
@@ -231,21 +237,13 @@ let
     end # for D in Ds
     
     # saving
-    params = (;legend = false, titlefont = 10, axistitle = 10)
     M, N = 1, 3
-    p = plot(deepcopy.(vatp_plots)...; layout = grid(M, N), 
-    size = [400 * N, 300 * M], params...)
-    mysavefig(p, "dyn_vatp_marginals_vs_D_vs_ϵ")
+    mysavefig(vatp_plots, "dyn_vatp_marginals_vs_D_vs_ϵ"; layout = (M, N))
+    mysavefig(vg_plots, "dyn_vg_marginals_vs_D_vs_ϵ"; layout = (M, N))
     
-    p = plot(deepcopy.(vg_plots)...; layout = grid(M, N), 
-        size = [400 * N, 300 * M], params...)
-    mysavefig(p, "dyn_vg_marginals_vs_D_vs_ϵ")
-
-    ps = [vatp_plots; vg_plots]
+    ps = Plots.Plot[vatp_plots; vg_plots]
     M, N = 2, 3
-    p = plot(deepcopy.(ps)...; layout = grid(M, N), 
-        size = [400 * N, 300 * M], params...)
-    mysavefig(p, "dyn_marginals_vs_D_vs_ϵ")
+    mysavefig(ps, "dyn_marginals_vs_D_vs_ϵ"; layout = (M, N))
 
 end
 

@@ -6,18 +6,18 @@ function idxdat(INDEX, dk, indexks...)
     if FILE isa ITERABLE
         dat = []
         for F in FILE
-            datum = deserialize(F)[dk]
+            datum = deserialize(F)[dk...]
             push!(dat, datum)
         end
         return dat
     else
         if FILE == FCACHED
-            return DATCACHED[dk]
+            return DATCACHED[dk...]
         else
             global FCACHED = FILE
             dat = deserialize(FILE)
             global DATCACHED = dat
-            return dat[dk]
+            return dat[dk...]
         end
     end
 end
