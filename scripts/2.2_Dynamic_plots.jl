@@ -52,7 +52,7 @@ mysavefig(p, pname; params...) =
 #     for ϵ in INDEX[:ϵs], D in Ds
 #         @time begin
 #             M = idxdat([:M], Vl, D, ϵ, τ)
-#             status = idxdat(:status, Vl, D, ϵ, τ)
+#             status = idxdat([:status], Vl, D, ϵ, τ)
 #             @info "Loaded Test" Vl, D, ϵ, τ status
 #         end
 #     end
@@ -89,7 +89,7 @@ mysavefig(p, pname; params...) =
         # Other polytopes
         for (D, color) in zip(Ds, colors)
             M = idxdat([:M], Vl, D, ϵ, τ)
-            status = idxdat(:status, Vl, D, ϵ, τ)
+            status = idxdat([:status], Vl, D, ϵ, τ)
             status != :stst && continue
             @info "Doing" Vl, D, ϵ, τ
             InLP.plot_politope!(p, M; rand_th = 1.0, 
