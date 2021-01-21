@@ -1,6 +1,6 @@
 # TODO: package this
 const IDXDAT_CACHE = Dict()
-function idxdat(INDEX, dk, indexks...)
+function idxdat(INDEX, dk, indexks...; cache = true)
     FILE = INDEX[:DFILE, indexks...]
     if FILE isa ITERABLE
         dat = []
@@ -10,7 +10,7 @@ function idxdat(INDEX, dk, indexks...)
         end
         return dat
     else
-        iscached = FILE == get(IDXDAT_CACHE, :FCACHED, nothing)
+        iscached = cache && FILE == get(IDXDAT_CACHE, :FCACHED, nothing)
         return iscached ?
             IDXDAT_CACHE[:DATCACHED][dk...] :
         begin

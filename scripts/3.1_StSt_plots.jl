@@ -7,12 +7,11 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
     const InCh = Chemostat_InSilico
     const InLP = InCh.LP_Implement
     const InU = InCh.Utilities
-
+        
     using ProgressMeter
-    using Plots
     using Plots.Measures
 
-    # Test
+    using Plots
     import GR
     GR.inline("png")
 

@@ -32,13 +32,13 @@ function ToyModel()
     Nr = 38.0
     y = -Y        # mmol/gDW
     Vr = 0.45     # mmol/gDW h
-    ATPM = 1.0625 # mmol/gDW h
+    ATPM = 0.0 # 1.0625 # mmol/gDW h
     Vg = 0.5      # mmol/gDW h
 
     net[:S] = 
     # rxns: gt    ferm  resp  ldh   lt   biom    atpm  vatp    # mets
     [       1.0  -1.0   0.0   0.0   0.0   0.0    0.0   0.0  ;  #  G
-            0.0    Nf    Nr   0.0   0.0    y     0.0   0.0  ;  #  E
+            0.0    Nf    Nr   0.0   0.0    y    -1.0   0.0  ;  #  E
             0.0    Nf  -1.0  -1.0   0.0   0.0    0.0   0.0  ;  #  P
             0.0   0.0   0.0   1.0   1.0   0.0    0.0   0.0  ;  #  L
             0.0    Nf    Nr   0.0   0.0   0.0    0.0  -1.0  ;  #  AUX1
@@ -49,6 +49,7 @@ function ToyModel()
     
     AB = ABS_MAX_BOUND
     net[:rxns] = deepcopy(RXNS)
+    #            [ "gt"  , "ferm" , "resp" , "ldh" ,  "lt" , BIOMASS_IDER , "atpm" , "vatp" ]
     net[:lb]   = [ 0.0   ,  0.0   ,  0.0   ,  0.0  ,  -AB  ,     0.0      ,  ATPM  ,  0.0   ];
     net[:ub]   = [  Vg   ,  AB    ,   Vr   ,  AB   ,   0.0 ,      AB      ,   AB   ,  AB    ];
     net[:c]    = [ 0.0   ,  0.0   ,  0.0   ,  0.0  ,   0.0 ,  MAX_SENSE   ,   0.0  ,  0.0   ];

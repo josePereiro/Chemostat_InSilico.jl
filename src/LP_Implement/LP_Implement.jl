@@ -12,6 +12,8 @@ GR.inline("png")
 using Base.Threads
 using Random
 import FileIO
+import JuMP
+import GLPK
 
 include("LP.jl")
 include("MetNets.jl")
@@ -25,6 +27,8 @@ include("run_simulation.jl")
 include("marginals.jl")
 include("idxdat.jl")
 include("mysavefig.jl")
+include("pos_defined.jl")
+include("yLP.jl")
 
 export MAX_SENSE, MIN_SENSE, fba, fva
 export MetNet, ToyModel, rxnindex, metindex, fix!, fixxing, Δv, U, L, ABS_MAX_BOUND
