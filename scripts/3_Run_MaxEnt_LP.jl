@@ -29,9 +29,12 @@ idxdat(dk, indexks...) = InLP.idxdat(DINDEX, dk, indexks...)
 const WLOCK = ReentrantLock()
 const STST_POL = :STST_POL   # Use polytope computed from chemostat stst assertion
 const DYN_POL = :DYN_POL     # Use dynamic polytope
-const HOMO = :HOMO           # Do not use extra constraints
-const EXPECTED = :EXPECTED   # Match ME and Dy biom average
-const BOUNDED = :BOUNDED     # Fix biom around observed
+
+const ME_HOMO = :ME_HOMO           # Do not use extra constraints
+const ME_EXPECTED = :ME_EXPECTED   # Match ME and Dy biom average
+const ME_BOUNDED = :ME_BOUNDED     # Fix biom around observed
+const FBA_OPEN = :FBA_OPEN
+const FBA_BOUNDED = :FBA_BOUNDED
 
 function prepare_pol!(M, POLTsym)
     net = M.net
@@ -53,13 +56,14 @@ function prepare_pol!(M, POLTsym)
     return net
 end
 
-function run_model!(M, MODsym; LP_cache, δ, δμ, DyBiom, verbose = true)
+function run_ME!(M, MEmode; LP_cache, δ, δμ, DyBiom, verbose = true)
     
     # MaxEnt fun
     y = InLP.Y # atp/biomass yield
     maxentf(beta) = (vatp, vg) -> exp(beta * vatp/y)
 
-    if MODsym == EXPECTED
+
+    if MEmode == ME_EXPECTED
         # Gradient descent
         target = DyBiom
         x0 = 1.5e3
@@ -74,12 +78,15 @@ function run_model!(M, MODsym; LP_cache, δ, δμ, DyBiom, verbose = true)
             MEMs = InLP.get_marginals(maxentf(beta), M, [InLP.BIOMASS_IDER]; 
                 δ, verbose = false, LP_cache)
             f = InLP.av(MEMs[InLP.BIOMASS_IDER])
-            if it == 1 || rem(it, 50) == 0 || it == maxiters
+
+            show_info = it == 1 || rem(it, 50) == 0 || it == maxiters
+            if show_info
                 lock(WLOCK) do
                     @info "Grad Descent " it target f (target - f) beta threadid()
                     println()
                 end
             end
+
             it += 1
             return f
         end
@@ -87,27 +94,46 @@ function run_model!(M, MODsym; LP_cache, δ, δμ, DyBiom, verbose = true)
         beta0 = 0.0
     end
 
-    if MODsym == BOUNDED
+    if MEmode == ME_BOUNDED
         # Fix biomass to observable
         net = M.net
         net.ub[M.obj_idx] = DyBiom * (1.0 + δμ)
         net.lb[M.obj_idx] = DyBiom * (1.0 - δμ)
         L, U = InLP.fva(M.net)
-        net.lb .= L
-        net.ub .= U
+        net.lb .= L; net.ub .= U
     end
 
     MEMs = InLP.get_marginals(maxentf(beta0), M; δ, LP_cache, verbose)
     return MEMs, beta0
 end
 
+function run_FBA!(M, FBAmode; LP_cache, δ, δμ, DyBiom, verbose = true)
+
+    if FBAmode == FBA_BOUNDED
+        # Fix biomass to observable
+        net = M.net
+        net.ub[M.obj_idx] = DyBiom * (1.0 + δμ)
+        net.lb[M.obj_idx] = DyBiom * (1.0 - δμ)
+        L, U = InLP.fva(M.net)
+        net.lb .= L; net.ub .= U
+    end
+
+    fba_sol = InLP.fba(M.net)
+    vatp_fba = fba_sol[M.vatp_idx]
+    vg_fba = fba_sol[M.vg_idx]
+
+    fbaf(vatp, vg) = (vatp == vatp_fba && vg == vg_fba) ? 1.0 : 0.0
+
+    FBAMs = InLP.get_marginals(fbaf, M; δ, LP_cache, verbose)
+    return FBAMs
+end
+
 ## ----------------------------------------------------------------------------
 # COMPUTE MARGINALS
 INDEX = UJL.DictTree() # marginals dat
 let
-
     δ = INDEX[:δ]   = 0.08 # marginal discretization factor
-    δμ = INDEX[:δμ] = 0.01 # BOUNDED biomass variance
+    δμ = INDEX[:δμ] = 0.01 # ME_BOUNDED biomass variance
 
     N = prod(length.(DINDEX[[:Vls, :Ds, :ϵs, :τs]]))
     gc = 0
@@ -121,8 +147,8 @@ let
         
         ## ----------------------------------------------------------------------------
         MDAT = UJL.DictTree()
-        M0 = idxdat(:M, Vl, D, ϵ, τ)
-        status = idxdat(:status, Vl, D, ϵ, τ)
+        M0 = idxdat([:M], Vl, D, ϵ, τ)
+        status = idxdat([:status], Vl, D, ϵ, τ)
         LP_cache = nothing
         
         c = nothing
@@ -147,7 +173,7 @@ let
         end
         
         ## ----------------------------------------------------------------------------
-        if isfile(cfile)
+        if isfile(cfile) # Check caches
             lock(WLOCK) do
                 @info "Cache found (Skipping) $c/$N ... " Vl, D, ϵ, τ status basename(cfile) threadid()
                 println()
@@ -167,11 +193,11 @@ let
 
         ## ----------------------------------------------------------------------------
         # MaxEnt marginals
-        for MODsym in [HOMO, BOUNDED, EXPECTED]
+        for MEmode in [ME_HOMO, ME_BOUNDED, ME_EXPECTED]
             for POLTsym in [STST_POL, DYN_POL]
                 
                 lock(WLOCK) do
-                    @info "Doing  $c/$N ... " MODsym POLTsym Vl, D, ϵ, τ M0.X threadid()
+                    @info "Doing  $c/$N ... " MEmode POLTsym Vl, D, ϵ, τ M0.X threadid()
                     println()
                 end
 
@@ -179,21 +205,44 @@ let
                 M = deepcopy(M0)
                 prepare_pol!(M, POLTsym)
                 
-                MEMs, beta0 = run_model!(M, MODsym; 
+                MEMs, beta0 = run_ME!(M, MEmode; 
                     LP_cache, δ, δμ, DyBiom, verbose = false)
                 
                 # Ranges
                 vatp_range, vg_ranges = InLP.vatpvg_ranges(M)
 
                 lock(WLOCK) do
-                    MDAT[MODsym, POLTsym, :M] = M
-                    MDAT[MODsym, POLTsym, :MEMs] = MEMs
-                    MDAT[MODsym, POLTsym, :beta0] = beta0
-                    MDAT[MODsym, POLTsym, :POL] = (;vatp_range, vg_ranges)
+                    MDAT[MEmode, POLTsym, :M] = M
+                    MDAT[MEmode, POLTsym, :Ms] = MEMs
+                    MDAT[MEmode, POLTsym, :beta0] = beta0
+                    MDAT[MEmode, POLTsym, :POL] = (;vatp_range, vg_ranges)
                 end
             end
         end
 
+        ## ----------------------------------------------------------------------------
+        # FBA
+        for FBAmode in [FBA_BOUNDED, FBA_OPEN]
+            for POLTsym in [STST_POL, DYN_POL]
+                # Setup network
+                M = deepcopy(M0)
+                prepare_pol!(M, POLTsym)
+                
+                FBAMs = run_FBA!(M, FBAmode; 
+                    LP_cache, δ, δμ, DyBiom, verbose = false)
+                
+                # Ranges
+                vatp_range, vg_ranges = InLP.vatpvg_ranges(M)
+
+                lock(WLOCK) do
+                    MDAT[FBAmode, POLTsym, :M] = M
+                    MDAT[FBAmode, POLTsym, :Ms] = FBAMs
+                    MDAT[FBAmode, POLTsym, :POL] = (;vatp_range, vg_ranges)
+                end
+            end
+        end
+
+        ## ----------------------------------------------------------------------------
         lock(WLOCK) do
             @info "Finished  $c/$N ... " Vl, D, ϵ, τ M0.X basename(cfile) threadid()
             serialize(cfile, MDAT)
