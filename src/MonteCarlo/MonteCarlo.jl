@@ -4,7 +4,6 @@ using Plots
 using ProgressMeter
 using Base.Threads
 using ..Polytopes
-using ..Utilities
 import UtilsJL: get_chuncks
 
 include("Cells.jl")

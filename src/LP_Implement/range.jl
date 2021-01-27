@@ -1,3 +1,5 @@
+discretize(v, d; mode = RoundDown) = round(v, mode; digits = Int.(d))
+
 function vrange(L, U, d::Int)
     dx = 10.0^(-d)
     x0 = round(L, RoundUp; digits = d)

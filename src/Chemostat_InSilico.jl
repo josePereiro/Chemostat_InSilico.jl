@@ -4,7 +4,6 @@ module Chemostat_InSilico
     export DYN_DATA_DIR, DYN_FIGURES_DIR
 
     include("Meta/Meta.jl")
-    include("Utilities/Utilities.jl")
     include("Polytopes/Polytopes.jl")
     include("MonteCarlo/MonteCarlo.jl")
     include("MaxEnt/MaxEnt.jl")

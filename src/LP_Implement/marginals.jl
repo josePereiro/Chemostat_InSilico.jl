@@ -1,4 +1,5 @@
-discretize(n, Δ) = round(n / Δ) * Δ
+# TODO: make this the default discretization form
+_discretize(n, Δ) = round(n / Δ) * Δ
 
 function get_marginals(f::Function, M::SimModel, rxns = M.net.rxns; 
         verbose = true, δ = 0.06, LP_cache = nothing)
@@ -38,7 +39,7 @@ function get_marginals(f::Function, M::SimModel, rxns = M.net.rxns;
         Δ = abs(flxL - flxU) * δ
 
         for (raw_flx, p) in raw_marginal
-            dflx = discretize(raw_flx, Δ)
+            dflx = _discretize(raw_flx, Δ)
             get!(marginal, dflx, 0.0)
             marginal[dflx] += p
         end
@@ -49,10 +50,12 @@ function get_marginals(f::Function, M::SimModel, rxns = M.net.rxns;
     # normalizing
     for (rxn, marginal) in marginals
         Z = sum(values(marginal))
+        @assert Z > 0
         for (flx, p) in marginal
             marginal[flx] = p/Z
         end
-        @assert isapprox(sum(values(marginal)), 1.0; atol = 1e-8)
+        sum_ = sum(values(marginal))
+        @assert(isapprox(sum_, 1.0; atol = 1e-8), sum_)
         verbose && next!(prog)
     end
 

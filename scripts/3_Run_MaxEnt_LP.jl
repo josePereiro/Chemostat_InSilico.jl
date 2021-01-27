@@ -5,7 +5,6 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
     import Chemostat_InSilico
     const InCh = Chemostat_InSilico
     const InLP = InCh.LP_Implement
-    const InU = InCh.Utilities
 
     import UtilsJL
     const UJL = UtilsJL
@@ -23,6 +22,23 @@ DATA_FILE_PREFFIX = "marginal_dat"
 dat_file(;sim_params...) = joinpath(InCh.DYN_DATA_DIR, 
     InLP.mysavename(DATA_FILE_PREFFIX, "jls"; sim_params...))
 idxdat(dk, indexks...) = InLP.idxdat(DINDEX, dk, indexks...)
+
+# ## ----------------------------------------------------------------------------
+# let
+#     δ = 0.08
+#     M0 = InLP.SimModel()
+#     LP_cache = InLP.vgvatp_cache(M0; marginf = 1.5)
+#     fba_sol = InLP.fba(M0.net)
+#     vatp_fba = fba_sol[M0.vatp_idx]
+#     vg_fba = fba_sol[M0.vg_idx]
+    
+    
+    # Discretization RoundDown ensure the values are inside the polytope
+    # vatp_fba = InLP.discretize(vatp_fba, M.δvatp; mode = RoundDown)
+    # vg_fba = InLP.discretize(vg_fba, M.δvg; mode = RoundDown)
+#     FBAMs = InLP.get_marginals(fbaf, M0; δ, LP_cache, verbose = true)
+
+# end
 
 ## ----------------------------------------------------------------------------
 # Prepare network
@@ -74,7 +90,7 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, DyBiom, verbose = true)
         it = 1
 
         # Dynamic caching
-        beta0 = InU.grad_desc(;target, x0, x1, maxΔ, th, maxiters, verbose) do beta
+        beta0 = UJL.grad_desc(;target, x0, x1, maxΔ, th, maxiters, verbose) do beta
             MEMs = InLP.get_marginals(maxentf(beta), M, [InLP.BIOMASS_IDER]; 
                 δ, verbose = false, LP_cache)
             f = InLP.av(MEMs[InLP.BIOMASS_IDER])
@@ -122,6 +138,9 @@ function run_FBA!(M, FBAmode; LP_cache, δ, δμ, DyBiom, verbose = true)
     vatp_fba = fba_sol[M.vatp_idx]
     vg_fba = fba_sol[M.vg_idx]
 
+    # Discretization RoundDown ensure the values are inside the polytope
+    vatp_fba = InLP.discretize(vatp_fba, M.δvatp; mode = RoundDown)
+    vg_fba = InLP.discretize(vg_fba, M.δvg; mode = RoundDown)
     fbaf(vatp, vg) = (vatp == vatp_fba && vg == vg_fba) ? 1.0 : 0.0
 
     FBAMs = InLP.get_marginals(fbaf, M; δ, LP_cache, verbose)
