@@ -22,6 +22,7 @@ function get_marginals(f::Function, M::SimModel, rxns = M.net.rxns;
             for vg in vg_ranges[vatpi]
                 flx = lcache[vg][rxni]
                 get!(raw_marginal, flx, 0.0)
+                # call function
                 raw_marginal[flx] += f(vatp, vg)
             end
         end

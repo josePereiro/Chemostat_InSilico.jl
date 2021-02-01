@@ -5,7 +5,6 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
     import Chemostat_InSilico
     const InCh = Chemostat_InSilico
     const InLP = InCh.LP_Implement
-    const InU = InCh.Utilities
 
     using ProgressMeter
     using Plots
@@ -38,103 +37,148 @@ Base.last(v::Vector, i) = v[max(firstindex(v), length(v) - i + 1):lastindex(v)]
 INDEX = UJL.load_data(InCh.DYN_DATA_INDEX_FILE)
 idxdat(dk, indexks...) = InLP.idxdat(INDEX, dk, indexks...)
 
+
+
 ## ----------------------------------------------------------------------------
 # PLOTS
 mysavefig(p, pname; params...) = 
     InLP.mysavefig(p, pname, InLP.DYN_FIGURES_DIR, fileid; params...)
 
-# ## ----------------------------------------------------------------------------
-# Dev
-# let
+## ----------------------------------------------------------------------------
+# Separated Polytopes
+let
+    Vl = INDEX[:Vls] |> first
+    τ =  INDEX[:τs] |> first
+    Ds =  INDEX[:Ds][1:3:end][1:4]
+    ϵs = INDEX[:ϵs]
+
+    ps = Plots.Plot[]
+    for ϵ in ϵs
+
+        # Find bigger polytope
+        G = (;vgU = -Inf)
+        for D in Ds
+            M = idxdat([:M], Vl, D, ϵ, τ)
+            status = idxdat([:status], Vl, D, ϵ, τ)
+            status != :stst && continue
+            vatpL, vatpU, vgL, vgU = InLP.pol_box(M)
+            G.vgU < vgU && (G = (;D, vgU, vatpU))
+        end
+        
+        # polytopes
+        for D in Ds
+
+            M = idxdat([:M], Vl, D, ϵ, τ)
+            status = idxdat([:status], Vl, D, ϵ, τ)
+            status != :stst && continue
+
+            @info("Doing",(Vl, D, ϵ, τ)); println()
+            p = plot(;title = "polytope, D = $(UJL.sci(D)), ϵ = $(UJL.sci(ϵ))", 
+                xlabel = "vatp", ylabel = "vg"
+            )
+            skwargs = (;color = :blue, alpha = 0.8, 
+                xlim = [-G.vatpU * 0.1, G.vatpU * 1.1],
+                ylim = [-G.vgU * 0.1, G.vgU * 1.1], 
+            )
+            InLP.plot_politope!(p, M; rand_th = 0.3, 
+                hits_count = Int(5e2), maxiters = Int(1e5), skwargs, 
+            )
+
+            # Dynamic marginal
+            δ = 0.08
+            LP_cache = InLP.vgvatp_cache(M; marginf = 1.5)
+            f(vatp, vg) = M.Xb[vatp][vg] / M.X
+            DyMs = InLP.get_marginals(f, M; δ, LP_cache, verbose = false)
+            vatp_av = InLP.av(DyMs["vatp"]) 
+            vg_av = InLP.av(DyMs["gt"]) 
+
+            kwargs = (;alpha = 0.5, label = "", color = :black)
+            hline!(p, [vg_av]; lw = 5, ls = :dash, kwargs...)
+            vline!(p, [vatp_av]; lw = 5, ls = :dash, kwargs...)
+            scatter!(p, [vatp_av], [vg_av]; ms = 8, kwargs...)
+
+            push!(ps, p)
+        end
+    end
+    layout = length(ϵs), length(Ds)
+    mysavefig(ps, "separated_polytopes"; layout)
+end
+
+## ----------------------------------------------------------------------------
+# # Overlaped Polytopes
+# @time let
 #     Vl = INDEX[:Vls] |> first
 #     τ =  INDEX[:τs] |> first
 #     Ds =  INDEX[:Ds] |> reverse
-#     for ϵ in INDEX[:ϵs], D in Ds
-#         @time begin
+#     colors = Plots.distinguishable_colors(length(Ds))
+
+#     for ϵ in INDEX[:ϵs]
+#         p = plot(;title = "polytope", xlabel = "vatp", ylabel = "vg")
+#         MD = -Inf
+
+#         # Find bigger polytope
+#         G = (;vgub = -Inf)
+#         for (D, color) in zip(Ds, colors)
 #             M = idxdat([:M], Vl, D, ϵ, τ)
 #             status = idxdat([:status], Vl, D, ϵ, τ)
-#             @info "Loaded Test" Vl, D, ϵ, τ status
+#             status != :stst && continue
+#             vgub = M.net.ub[M.vg_idx]
+#             G.vgub < vgub && (G = (;D, vgub, color))
 #         end
+
+#         # full polytope
+#         M = idxdat([:M], Vl, G.D, ϵ, τ)
+#         InLP.plot_politope!(p, M; rand_th = 0.0, 
+#             skwargs = (;G.color, alpha = 0.4)
+#         )
+        
+#         # Other polytopes
+#         for (D, color) in zip(Ds, colors)
+#             M = idxdat([:M], Vl, D, ϵ, τ)
+#             status = idxdat([:status], Vl, D, ϵ, τ)
+#             status != :stst && continue
+#             @info "Doing" Vl, D, ϵ, τ
+#             InLP.plot_politope!(p, M; rand_th = 1.0, 
+#                 hits_count = 100, maxiters = 1e4, 
+#                 skwargs = (;color, alpha = 0.9)
+#             )
+#         end
+        
+#         mysavefig(p, "dyn_stst_polytopes"; Vl, ϵ, τ)
 #     end
 # end
 
-## ----------------------------------------------------------------------------
-# All Polytopes
-@time let
-    Vl = INDEX[:Vls] |> first
-    τ =  INDEX[:τs] |> first
-    Ds =  INDEX[:Ds] |> reverse
-    colors = Plots.distinguishable_colors(length(Ds))
-
-    for ϵ in INDEX[:ϵs]
-        p = plot(;title = "polytope", xlabel = "vatp", ylabel = "vg")
-        MD = -Inf
-
-        # Find bigger polytope
-        G = (;vgub = -Inf)
-        for (D, color) in zip(Ds, colors)
-            M = idxdat([:M], Vl, D, ϵ, τ)
-            status = idxdat([:status], Vl, D, ϵ, τ)
-            status != :stst && continue
-            vgub = M.net.ub[M.vg_idx]
-            G.vgub < vgub && (G = (;D, vgub, color))
-        end
-
-        # full polytope
-        M = idxdat([:M], Vl, G.D, ϵ, τ)
-        InLP.plot_politope!(p, M; rand_th = 0.0, 
-            skwargs = (;G.color, alpha = 0.4)
-        )
-        
-        # Other polytopes
-        for (D, color) in zip(Ds, colors)
-            M = idxdat([:M], Vl, D, ϵ, τ)
-            status = idxdat([:status], Vl, D, ϵ, τ)
-            status != :stst && continue
-            @info "Doing" Vl, D, ϵ, τ
-            InLP.plot_politope!(p, M; rand_th = 1.0, 
-                hits_count = 100, maxiters = 1e4, 
-                skwargs = (;color, alpha = 0.9)
-            )
-            vgub = M.net.ub[M.vg_idx]
-            G.vgub < vgub && (G = (;D, vgub, color))
-        end
-        
-        mysavefig(p, "dyn_stst_polytopes"; Vl, ϵ, τ)
-    end
-end
-
-## ----------------------------------------------------------------------------
-# _vs_time_vs_ϵ_vs_D
-let
+# ## ----------------------------------------------------------------------------
+# # _vs_time_vs_ϵ_vs_D
+# let
     
-    marginf = 0.2
-    f = identity
-    Ds = INDEX[:Ds][1:6:18]
-    fields = [:X_ts, :sg_ts, :sl_ts]
-    cparams = (;lw = 4, alpha = 0.7)
+#     marginf = 0.2
+#     f = identity
+#     Ds = INDEX[:Ds][1:6:18]
+#     fields = [:X_ts, :sg_ts, :sl_ts]
+#     cparams = (;lw = 4, alpha = 0.7)
 
-    for Vl in INDEX[:Vls], τ in INDEX[:τs]
-        ps = Plots.Plot[]
-        for field in fields
-            for D in Ds
-                ylabel = replace(string(field), "_ts" => "")
-                vals = getfield.(idxdat([:TS], Vl, D, INDEX[:ϵs], τ), field) 
-                ylim = InLP.lims(marginf, vals...)
+#     for Vl in INDEX[:Vls], τ in INDEX[:τs]
+#         ps = Plots.Plot[]
+#         for field in fields
+#             for D in Ds
+#                 ylabel = replace(string(field), "_ts" => "")
+#                 vals = getfield.(idxdat([:TS], Vl, D, INDEX[:ϵs], τ), field) 
+#                 ylim = InLP.lims(marginf, vals...)
                 
-                p = plot(;xlabel = "time", ylabel, 
-                    title = string("D: ", UJL.sci(D)))
-                for (ϵ, val) in zip(INDEX[:ϵs], vals) |> collect |> reverse
-                    plot!(p, f.(val); label = ϵ, color = Gray(ϵ * 0.8), cparams...)
-                end
-                push!(ps, p)
-            end
-        end
+#                 p = plot(;xlabel = "time", ylabel, 
+#                     title = string("D: ", UJL.sci(D)))
+#                 for (ϵ, val) in zip(INDEX[:ϵs], vals) |> collect |> reverse
+#                     plot!(p, f.(val); label = ϵ, color = Gray(ϵ * 0.8), cparams...)
+#                 end
+#                 push!(ps, p)
+#             end
+#         end
         
-        layout = length(fields), length(Ds)
-        mysavefig(ps, "time_series_vs_ϵ_vs_D"; layout, Vl, τ)
-    end
-end
+#         layout = length(fields), length(Ds)
+#         mysavefig(ps, "time_series_vs_ϵ_vs_D"; layout, Vl, τ)
+#     end
+# end
 
 ## ----------------------------------------------------------------------------
 # ϵ scale
@@ -168,10 +212,39 @@ let
 end
 
 ## ----------------------------------------------------------------------------
+# sg vs eps
+let
+    Ds =  INDEX[:Ds]
+    Vl = INDEX[:Vls] |> first
+    τ =  INDEX[:τs] |> first
+    ϵs = INDEX[:ϵs]
+
+    p = plot(;title = "dynamic stst", xlabel = "ϵ", ylabel = "sg")
+    ps = Plots.Plot[]
+    for D in Ds
+        xs, ys = [], []
+        for ϵ in ϵs |> sort |> reverse
+            M = idxdat([:M], Vl, D, ϵ, τ)
+            status = idxdat([:status], Vl, D, ϵ, τ)
+
+            @info("Doing", (Vl, D, ϵ, τ), M.X, status)
+            status != :stst && continue
+
+            sg = M.sg
+            push!(xs, ϵ); push!(ys, sg)
+        end
+        length(ys) < length(ϵs) - 1 && continue
+        plot!(p, xs, ys; label = "", alpha = 0.5, lw = 3)
+    end
+    mysavefig(p, "eps_vs_sg") 
+end
+
+## ----------------------------------------------------------------------------
 # marginals
 let
+    δ = 0.08
     f = identity
-    Ds =  INDEX[:Ds][1:6:18]
+    Ds =  INDEX[:Ds]
     Vl = INDEX[:Vls] |> first
     τ =  INDEX[:τs] |> first
     
@@ -186,50 +259,38 @@ let
 
         for ϵ in INDEX[:ϵs] |> sort |> reverse
             M = idxdat([:M], Vl, D, ϵ, τ)
+            status = idxdat([:status], Vl, D, ϵ, τ)
 
-            vatp_range, vg_ranges = InLP.vatpvg_ranges(M)
+            @info("Doing", (Vl, D, ϵ, τ), M.X, status)
+            status != :stst && continue
 
-            # collect
-            vatp_hist = zeros(length(vatp_range))
-            vg_hist = Dict{Float64, Float64}()
-            for (ivatp, vatp) in enumerate(vatp_range)
-                vg_range = vg_ranges[ivatp]
-                for vg in vg_range
-                    X = M.Xb[vatp][vg]
-                    vatp_hist[ivatp] += X
-                    get!(vg_hist, vg, 0.0)
-                    vg_hist[vg] += X
-                end
-            end
-            vg_range = vg_hist |> keys |> collect |> sort
-            vg_hist = [vg_hist[vg] for vg in vg_range]
-
-            if D == 0.0 # is a delta
-                vatp_hist = [1.0; zeros(length(vatp_hist))]
-                vatp_range = [first(vatp_range); vatp_range]
-            end
+            # Dynamic marginal
+            LP_cache = InLP.vgvatp_cache(M; marginf = 1.5)
+            f(vatp, vg) = M.Xb[vatp][vg] / M.X
+            DyMs = InLP.get_marginals(f, M; δ, LP_cache, verbose = false)
+            vatp_av = InLP.av(DyMs["vatp"]) 
+            vg_av = InLP.av(DyMs["gt"]) 
 
             # marginals
             lparams = (;label = ϵ, lw = 4, alpha = 0.7, color =  Gray(ϵ * 0.8), legend = false)
-            plot!(vatp_plot, vatp_range, f(vatp_hist ./ M.X); lparams...)
-            plot!(vg_plot, vg_range, f(vg_hist ./ M.X); lparams...)
+            plot!(vatp_plot, DyMs["vatp"]; lparams...)
+            vline!(vatp_plot, [vatp_av]; ls = :dash, lparams...)
+            plot!(vg_plot, DyMs["gt"]; lparams...)
+            vline!(vg_plot, [vg_av]; ls = :dash, lparams...)
         end
 
-        lock(write_lock) do
-            vatp_plots[Di] = vatp_plot
-            vg_plots[Di] = vg_plot
-            # @info "Done" threadid() Di D
-        end
+        vatp_plots[Di] = vatp_plot
+        vg_plots[Di] = vg_plot
         
     end # for D in Ds
     
     # saving
-    layout = 1, 3
-    mysavefig(vatp_plots, "dyn_vatp_marginals_vs_D_vs_ϵ"; layout)
-    mysavefig(vg_plots, "dyn_vg_marginals_vs_D_vs_ϵ"; layout)
+    # layout = 1, length(Ds)
+    mysavefig(vatp_plots, "dyn_vatp_marginals_vs_D_vs_ϵ")
+    mysavefig(vg_plots, "dyn_vg_marginals_vs_D_vs_ϵ")
     
     ps = Plots.Plot[vatp_plots; vg_plots]
-    layout = 2, 3
+    layout = 2, length(Ds)
     mysavefig(ps, "dyn_marginals_vs_D_vs_ϵ"; layout)
 
 end

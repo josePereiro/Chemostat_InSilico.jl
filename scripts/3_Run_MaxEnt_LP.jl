@@ -23,23 +23,10 @@ dat_file(;sim_params...) = joinpath(InCh.DYN_DATA_DIR,
     InLP.mysavename(DATA_FILE_PREFFIX, "jls"; sim_params...))
 idxdat(dk, indexks...) = InLP.idxdat(DINDEX, dk, indexks...)
 
-# ## ----------------------------------------------------------------------------
-# let
-#     δ = 0.08
-#     M0 = InLP.SimModel()
-#     LP_cache = InLP.vgvatp_cache(M0; marginf = 1.5)
-#     fba_sol = InLP.fba(M0.net)
-#     vatp_fba = fba_sol[M0.vatp_idx]
-#     vg_fba = fba_sol[M0.vg_idx]
-    
-    
-    # Discretization RoundDown ensure the values are inside the polytope
-    # vatp_fba = InLP.discretize(vatp_fba, M.δvatp; mode = RoundDown)
-    # vg_fba = InLP.discretize(vg_fba, M.δvg; mode = RoundDown)
-#     FBAMs = InLP.get_marginals(fbaf, M0; δ, LP_cache, verbose = true)
-
-# end
-
+## ----------------------------------------------------------------------------
+let
+    DINDEX[:Ds]
+end
 ## ----------------------------------------------------------------------------
 # Prepare network
 const WLOCK = ReentrantLock()
@@ -72,13 +59,14 @@ function prepare_pol!(M, POLTsym)
     return net
 end
 
+## ----------------------------------------------------------------------------
 function run_ME!(M, MEmode; LP_cache, δ, δμ, DyBiom, verbose = true)
     
     # MaxEnt fun
     y = InLP.Y # atp/biomass yield
     maxentf(beta) = (vatp, vg) -> exp(beta * vatp/y)
 
-
+    beta0 = 0.0
     if MEmode == ME_EXPECTED
         # Gradient descent
         target = DyBiom
@@ -98,16 +86,17 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, DyBiom, verbose = true)
             show_info = it == 1 || rem(it, 50) == 0 || it == maxiters
             if show_info
                 lock(WLOCK) do
-                    @info "Grad Descent " it target f (target - f) beta threadid()
-                    println()
+                    @info("Grad Descent ", 
+                        it, target, 
+                        f, (target - f), 
+                        beta, threadid()
+                    ); println()
                 end
             end
 
             it += 1
             return f
         end
-    else
-        beta0 = 0.0
     end
 
     if MEmode == ME_BOUNDED
@@ -123,6 +112,7 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, DyBiom, verbose = true)
     return MEMs, beta0
 end
 
+## ----------------------------------------------------------------------------
 function run_FBA!(M, FBAmode; LP_cache, δ, δμ, DyBiom, verbose = true)
 
     if FBAmode == FBA_BOUNDED
@@ -134,18 +124,52 @@ function run_FBA!(M, FBAmode; LP_cache, δ, δμ, DyBiom, verbose = true)
         net.lb .= L; net.ub .= U
     end
 
-    fba_sol = InLP.fba(M.net)
-    vatp_fba = fba_sol[M.vatp_idx]
-    vg_fba = fba_sol[M.vg_idx]
+    # Find maximum feasible vatp
+    vatp_range, vg_ranges = InLP.vatpvg_ranges(M)
+    max_vatp = -Inf
+    for (vatpi, vatp) in vatp_range |> enumerate
+        isempty(vg_ranges[vatpi]) && continue
+        vatp > max_vatp && (max_vatp = vatp)
+    end
+    @assert !isinf(max_vatp)
 
-    # Discretization RoundDown ensure the values are inside the polytope
-    vatp_fba = InLP.discretize(vatp_fba, M.δvatp; mode = RoundDown)
-    vg_fba = InLP.discretize(vg_fba, M.δvg; mode = RoundDown)
-    fbaf(vatp, vg) = (vatp == vatp_fba && vg == vg_fba) ? 1.0 : 0.0
-
+    fbaf(vatp, vg) = vatp == max_vatp ? 1.0 : 0.0
     FBAMs = InLP.get_marginals(fbaf, M; δ, LP_cache, verbose)
     return FBAMs
 end
+
+# ## ----------------------------------------------------------------------------
+# # Dev
+# let
+#     δ = 0.08
+#     δμ = 0.01
+#     Vl, D, ϵ, τ = 0.0, 0.036, 0.01, 0.0
+#     FBAmode = :FBA_OPEN
+#     POLTsym = :STST_POL
+#     M = idxdat([:M], Vl, D, ϵ, τ)
+#     prepare_pol!(M, POLTsym)
+
+#     LP_cache = InLP.vgvatp_cache(M; marginf = 1.5)
+#     # Dynamic marginal
+#     f(vatp, vg) = M.Xb[vatp][vg] / M.X
+#     DyMs = InLP.get_marginals(f, M; 
+#         δ, LP_cache, verbose = false)
+#     DyBiom = InLP.av(DyMs[InLP.BIOMASS_IDER]) # biomass dynamic mean
+#     # @show DyBiom
+    
+#     # fba_sol = InLP.fba(M.net)
+#     # vatp_fba = fba_sol[M.vatp_idx]
+#     # vg_fba = fba_sol[M.vg_idx]
+    
+#     # # Discretization RoundDown ensure the values are inside the polytope
+#     # vatp_fba = InLP.discretize(vatp_fba, M.δvatp; mode = RoundDown)
+#     # vg_fba = InLP.discretize(vg_fba, M.δvg; mode = RoundDown)
+#     # fbaf(vatp, vg) = (vatp == vatp_fba && vg == vg_fba) ? 1.0 : 0.0
+#     # FBAMs = InLP.get_marginals(fbaf, M; δ, LP_cache, verbose = true)
+
+#     run_FBA!(M, FBAmode; LP_cache, δ, δμ, DyBiom, verbose = false)
+
+# end
 
 ## ----------------------------------------------------------------------------
 # COMPUTE MARGINALS
@@ -153,14 +177,15 @@ INDEX = UJL.DictTree() # marginals dat
 let
     δ = INDEX[:δ]   = 0.08 # marginal discretization factor
     δμ = INDEX[:δμ] = 0.01 # ME_BOUNDED biomass variance
-
-    N = prod(length.(DINDEX[[:Vls, :Ds, :ϵs, :τs]]))
     gc = 0
 
     INDEX[:Vls], INDEX[:Ds] = [], []
     INDEX[:ϵs], INDEX[:τs] = [], []
     
-    params = Iterators.product(DINDEX[[:Vls, :Ds, :ϵs, :τs]]...) |> collect |> shuffle!
+    Vls, Ds, ϵs, τs = DINDEX[[:Vls, :Ds, :ϵs, :τs]]
+    # Ds = Ds[1:2:end] # Test
+    params = Iterators.product(Vls, Ds, ϵs, τs) |> collect |> shuffle!
+    N = length(params)
     @threads for (Vl, D, ϵ, τ) in params
         cfile = dat_file(;Vl, D, ϵ, τ, δ, δμ)
         
@@ -178,15 +203,21 @@ let
             push!(INDEX[:ϵs], ϵ); push!(INDEX[:τs], τ)
             INDEX[:DFILE, Vl, D, ϵ, τ] = cfile
             INDEX[:STATUS, Vl, D, ϵ, τ] = status
-            @info "Doing $c/$N ... " Vl, D, ϵ, τ M0.X status threadid()
-            println()
+            @info("Doing $c/$N ... ", 
+                (Vl, D, ϵ, τ), 
+                M0.X, status, 
+                threadid()
+            ); println()
         end
         
         ## ----------------------------------------------------------------------------
         if status != :stst # Only accept steady states
             lock(WLOCK) do
-                @info "Not a Stst (Skipping) $c/$N ... " Vl, D, ϵ, τ M0.X status threadid()
-                println()
+                @info("Not a Stst (Skipping) $c/$N ... ",
+                    (Vl, D, ϵ, τ),
+                    M0.X, status,
+                    threadid()
+                ); println()
             end
             continue 
         end
@@ -194,8 +225,11 @@ let
         ## ----------------------------------------------------------------------------
         if isfile(cfile) # Check caches
             lock(WLOCK) do
-                @info "Cache found (Skipping) $c/$N ... " Vl, D, ϵ, τ status basename(cfile) threadid()
-                println()
+                @info("Cache found (Skipping) $c/$N ... ", 
+                    (Vl, D, ϵ, τ), 
+                    status, basename(cfile),
+                    threadid()
+                ); println()
             end
             continue
         end
@@ -216,8 +250,12 @@ let
             for POLTsym in [STST_POL, DYN_POL]
                 
                 lock(WLOCK) do
-                    @info "Doing  $c/$N ... " MEmode POLTsym Vl, D, ϵ, τ M0.X threadid()
-                    println()
+                    @info("Doing  $c/$N ... ",
+                        MEmode, POLTsym, 
+                        (Vl, D, ϵ, τ),
+                        M0.X, 
+                        threadid()
+                    ); println()
                 end
 
                 # Setup network
@@ -243,6 +281,16 @@ let
         # FBA
         for FBAmode in [FBA_BOUNDED, FBA_OPEN]
             for POLTsym in [STST_POL, DYN_POL]
+
+                lock(WLOCK) do
+                    @info("Doing  $c/$N ... ", 
+                        FBAmode, POLTsym,
+                        (Vl, D, ϵ, τ),
+                        M0.X, 
+                        threadid()
+                    ); println()
+                end
+
                 # Setup network
                 M = deepcopy(M0)
                 prepare_pol!(M, POLTsym)
@@ -263,12 +311,14 @@ let
 
         ## ----------------------------------------------------------------------------
         lock(WLOCK) do
-            @info "Finished  $c/$N ... " Vl, D, ϵ, τ M0.X basename(cfile) threadid()
+            @info("Finished  $c/$N ... ",
+                (Vl, D, ϵ, τ),
+                M0.X, basename(cfile),
+                threadid()
+            ); println()
             serialize(cfile, MDAT)
-            println()
         end
         GC.gc()
-
     end #  for (Vl, D, ϵ, τ)
 
     sort!(unique!(INDEX[:Vls])); sort!(unique!(INDEX[:Ds]))
