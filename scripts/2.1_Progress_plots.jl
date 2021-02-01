@@ -6,7 +6,6 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
     import Chemostat_InSilico
     const InCh = Chemostat_InSilico
     const InLP = InCh.LP_Implement
-    const InU = InCh.Utilities
     
     # Test
     using Plots
