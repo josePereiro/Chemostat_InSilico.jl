@@ -76,12 +76,10 @@ INDEX = UJL.DictTree() # To Store relevant information
     death_th = INDEX[:death_th] = 1e-2
 
     # Params
-    # Vls = [0.0, 0.1]
-    Vls = INDEX[:Vls] = [0.0]
+    Vls = [0.0, 0.1]
     Ds = INDEX[:Ds]= [0.003:0.001:0.045;]
     ϵs = INDEX[:ϵs] = [0.01, 0.1, 0.5, 1.0]
-    # τs = [0.0, 0.0022]
-    τs = INDEX[:τs] = [0.0] 
+    τs = [0.0, 0.0022]
     
     params = Iterators.product(Vls, Ds, ϵs, τs) |> collect |> shuffle! # distribute equally between threads
     N = length(params)
