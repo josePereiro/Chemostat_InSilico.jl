@@ -14,11 +14,17 @@ end
 ## ----------------------------------------------------------------------------
 function plot_res(M::SimModel, TS::ResTS; f = (x) -> x, marginf = 0.2)
 
+    # time series
     p1 = plot_ts_concs(TS; f, marginf)    
     p2 = plot_ts_D(TS; f, marginf)    
     p3 = plot_ts_X(TS; f, marginf)    
 
-    p4 = plot_poldist(M)
+    # polytope
+    p4 = plot(xlabel = "vatp", ylabel = "vg")
+    plot_polborder!(p4, M)
+    plot_poldist!(p4, M; hits_count = 500,
+        static_th = 0.05, rand_th = 1.0
+    )
     
     p = plot([p1, p2, p3, p4]...;
         size = [800, 700], layout = 4)
