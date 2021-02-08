@@ -37,8 +37,6 @@ Base.last(v::Vector, i) = v[max(firstindex(v), length(v) - i + 1):lastindex(v)]
 INDEX = UJL.load_data(InCh.DYN_DATA_INDEX_FILE)
 idxdat(dk, indexks...) = InLP.idxdat(INDEX, dk, indexks...)
 
-
-
 ## ----------------------------------------------------------------------------
 # PLOTS
 mysavefig(p, pname; params...) = 
@@ -53,55 +51,55 @@ let
     ϵs = INDEX[:ϵs]
 
     ps = Plots.Plot[]
-    for ϵ in ϵs
 
-        # Find bigger polytope
-        G = (;vgU = -Inf)
-        for D in Ds
-            M = idxdat([:M], Vl, D, ϵ, τ)
-            status = idxdat([:status], Vl, D, ϵ, τ)
-            status != :stst && continue
-            vatpL, vatpU, vgL, vgU = InLP.pol_box(M)
-            G.vgU < vgU && (G = (;D, vgU, vatpU))
-        end
-        
-        # polytopes
-        for D in Ds
+    # Find bigger polytope
+    G = (;vgU = -Inf)
+    for ϵ in ϵs, D in Ds
+        M = idxdat([:M], Vl, D, ϵ, τ)
+        status = idxdat([:status], Vl, D, ϵ, τ)
+        status != :stst && continue
+        vatpL, vatpU, vgL, vgU = InLP.pol_box(M)
+        G.vgU < vgU && (G = (;D, vgU, vatpU))
+    end
 
-            M = idxdat([:M], Vl, D, ϵ, τ)
-            status = idxdat([:status], Vl, D, ϵ, τ)
-            status != :stst && continue
+    for ϵ in ϵs, D in Ds
+        M = idxdat([:M], Vl, D, ϵ, τ)
+        status = idxdat([:status], Vl, D, ϵ, τ)
+        status != :stst && continue
 
-            @info("Doing",(Vl, D, ϵ, τ)); println()
-            p = plot(;title = "polytope, D = $(UJL.sci(D)), ϵ = $(UJL.sci(ϵ))", 
-                xlabel = "vatp", ylabel = "vg"
-            )
-            skwargs = (;color = :blue, alpha = 0.8, 
-                xlim = [-G.vatpU * 0.1, G.vatpU * 1.1],
-                ylim = [-G.vgU * 0.1, G.vgU * 1.1], 
-            )
-            InLP.plot_politope!(p, M; rand_th = 0.3, 
-                hits_count = Int(5e2), maxiters = Int(1e5), skwargs, 
-            )
+        @info("Doing",(Vl, D, ϵ, τ)); println()
+        p = plot(;title = "polytope, D = $(UJL.sci(D)), ϵ = $(UJL.sci(ϵ))", 
+            xlabel = "vatp", ylabel = "vg"
+        )
+        skwargs = (;color = :blue, alpha = 0.3, 
+            xlim = [-G.vatpU * 0.1, G.vatpU * 1.1],
+            ylim = [-G.vgU * 0.1, G.vgU * 1.1], 
+        )
+        InLP.plot_polborder!(p, M)
+        hits_count = Int(1e3)
+        InLP.plot_poldist!(p, M; rand_th = 1.0, static_th = 0.05, 
+            hits_count, skwargs, 
+        )
 
-            # Dynamic marginal
-            δ = 0.08
-            LP_cache = InLP.vgvatp_cache(M; marginf = 1.5)
-            f(vatp, vg) = M.Xb[vatp][vg] / M.X
-            DyMs = InLP.get_marginals(f, M; δ, LP_cache, verbose = false)
-            vatp_av = InLP.av(DyMs["vatp"]) 
-            vg_av = InLP.av(DyMs["gt"]) 
+        # Dynamic marginal
+        δ = 0.08
+        LP_cache = InLP.vgvatp_cache(M; marginf = 1.5)
+        f(vatp, vg) = M.Xb[vatp][vg] / M.X
+        DyMs = InLP.get_marginals(f, M; δ, LP_cache, verbose = false)
+        vatp_av = InLP.av(DyMs["vatp"]) 
+        vg_av = InLP.av(DyMs["gt"]) 
 
-            kwargs = (;alpha = 0.5, label = "", color = :black)
-            hline!(p, [vg_av]; lw = 5, ls = :dash, kwargs...)
-            vline!(p, [vatp_av]; lw = 5, ls = :dash, kwargs...)
-            scatter!(p, [vatp_av], [vg_av]; ms = 8, kwargs...)
+        kwargs = (;alpha = 0.5, label = "", color = :black)
+        hline!(p, [vg_av]; lw = 5, ls = :dash, kwargs...)
+        vline!(p, [vatp_av]; lw = 5, ls = :dash, kwargs...)
+        # scatter!(p, [vatp_av], [vg_av]; ms = 8, kwargs...)
 
-            push!(ps, p)
-        end
+        push!(ps, p)
     end
     layout = length(ϵs), length(Ds)
     mysavefig(ps, "separated_polytopes"; layout)
+    @warn "Exiting"
+    exit()
 end
 
 ## ----------------------------------------------------------------------------
@@ -128,7 +126,7 @@ end
 
 #         # full polytope
 #         M = idxdat([:M], Vl, G.D, ϵ, τ)
-#         InLP.plot_politope!(p, M; rand_th = 0.0, 
+#         InLP.plot_poldist!(p, M; rand_th = 0.0, 
 #             skwargs = (;G.color, alpha = 0.4)
 #         )
         
@@ -138,7 +136,7 @@ end
 #             status = idxdat([:status], Vl, D, ϵ, τ)
 #             status != :stst && continue
 #             @info "Doing" Vl, D, ϵ, τ
-#             InLP.plot_politope!(p, M; rand_th = 1.0, 
+#             InLP.plot_poldist!(p, M; rand_th = 1.0, 
 #                 hits_count = 100, maxiters = 1e4, 
 #                 skwargs = (;color, alpha = 0.9)
 #             )
@@ -335,7 +333,7 @@ end
 #         for ϵ in ϵs
 #             M = DAT[:M, Vl, D, ϵ]
             
-#             p = InLP.plot_politope(M) 
+#             p = InLP.plot_poldist(M) 
 #             plot!(p; title = string("D: ", UJL.sci(D), " ϵ: ", UJL.sci(ϵ)), params...)
             
 #             plot!(p; xlim = [vatpL, vatpU], ylim = [vgL, vgU]) 

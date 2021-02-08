@@ -115,6 +115,36 @@ plot_marginals!(p, MODsyms::Symbol, POLTsym, rxn, Vl, D, ϵ, τ; sparams...) =
     plot_marginals!(p, [MODsyms], POLTsym, rxn, Vl, D, ϵ, τ; sparams...)
 
 
+# ## ----------------------------------------------------------------------------
+# let
+#     Vl = MINDEX[:Vls] |> first
+#     τ = MINDEX[:τs] |> first
+#     D = MINDEX[:Ds][2]
+#     ϵ = MINDEX[:ϵs][end]
+#     MODsym = FBA_OPEN
+#     POLsym = STST_POL
+
+#     @info("Doing", 
+#         (Vl, D, ϵ, τ)
+#     ); println()
+#     M = idxdat([MODsym, POLTsym, :M], Vl, D, ϵ, τ)
+
+#     p = plot()
+#     sparams = (;)
+#     # plot_polgrid!(p, M; sparams...)
+#     InLP.plot_polborder!(p, M; sparams...)
+#     InLP.plot_poldist!(p, M; rand_th = 1.0, 
+#         hits_count = Int(1e3), maxiters = Int(1e5), 
+#         static_th = 0.05,
+#         skwargs = (;color = :red, alpha = 0.8)
+#     )
+
+#     mysavefig(p, "test")
+# end
+
+## ----------------------------------------------------------------------------
+## ----------------------------------------------------------------------------
+## ----------------------------------------------------------------------------
 ## ----------------------------------------------------------------------------
 # Error
 let
@@ -140,9 +170,7 @@ let
                 
                 for rxn in InLP.RXNS
                     DYN_flx = InLP.av(DyMs[rxn])
-                    # DYN_err = InLP.va(DyMs[rxn]) |> sqrt
                     ME_flx = InLP.av(Ms[rxn])
-                    # ME_err = InLP.va(Ms[rxn]) |> sqrt
                     (isnan(DYN_flx) || isnan(ME_flx)) && continue
 
                     err = ((DYN_flx - ME_flx)^2)/abs(DYN_flx)
@@ -157,9 +185,12 @@ let
         end # for ϵ in ϵs
 
         noise = xs .* 0.1 .* rand.()
+        params = (;alpha = 0.5, color = MOD_COLORS[MODsym])
+        plot!(p, log10.(xs .+ noise), ys; 
+            label = "", lw = 3, ls = :dash, params...
+        )
         scatter!(p, log10.(xs .+ noise), ys; yerr = yerrs, 
-            alpha = 0.5, color = MOD_COLORS[MODsym], ms = 8,
-            label = string(MODsym), legend = :topleft
+            ms = 8, params..., label = string(MODsym), legend = :topleft
         )
     end #  for MODsym 
 
@@ -167,34 +198,34 @@ let
 
 end
 
-## ----------------------------------------------------------------------------
-# all Marginals
-let
-    MODELS = [ME_BOUNDED, ME_EXPECTED, ME_HOMO, FBA_BOUNDED, FBA_OPEN]
-    return
+# ## ----------------------------------------------------------------------------
+# # all Marginals
+# let
+#     MODELS = [ME_BOUNDED, ME_EXPECTED, ME_HOMO, FBA_BOUNDED, FBA_OPEN]
+#     return
 
-    for (Vl, D, ϵ, τ) in EXP_PARAMS
-        MINDEX[:STATUS, Vl, D, ϵ, τ] != :stst && continue
-        ps = Plots.Plot[]
-        sparams =(;ylim = [0.0, Inf])
-        gparams = (xaxis = nothing, yaxis = nothing, grid = false)
-        for rxn in InLP.RXNS
-            p = plot(;title = rxn, xlabel = "flx", ylabel = "prob", gparams...)
-            for  MODsym in MODELS
-                plot_marginals!(p, MODsym, POLTsym, rxn, Vl, D, ϵ, τ; sparams...)
-            end
-            push!(ps, p)
-        end
+#     for (Vl, D, ϵ, τ) in EXP_PARAMS
+#         MINDEX[:STATUS, Vl, D, ϵ, τ] != :stst && continue
+#         ps = Plots.Plot[]
+#         sparams =(;ylim = [0.0, Inf])
+#         gparams = (xaxis = nothing, yaxis = nothing, grid = false)
+#         for rxn in InLP.RXNS
+#             p = plot(;title = rxn, xlabel = "flx", ylabel = "prob", gparams...)
+#             for  MODsym in MODELS
+#                 plot_marginals!(p, MODsym, POLTsym, rxn, Vl, D, ϵ, τ; sparams...)
+#             end
+#             push!(ps, p)
+#         end
 
-        p = plot(;title = "polytope", xlabel = "vatp", ylabel = "vg", gparams...)        
-        plot_pol!(p, POLTsym, ME_EXPECTED, Vl, D, ϵ, τ; sparams...)
-        plot_pol!(p, POLTsym, ME_HOMO, Vl, D, ϵ, τ; sparams...)
-        plot_pol!(p, POLTsym, ME_BOUNDED, Vl, D, ϵ, τ; sparams...)
-        push!(ps, p)
+#         p = plot(;title = "polytope", xlabel = "vatp", ylabel = "vg", gparams...)        
+#         plot_pol!(p, POLTsym, ME_EXPECTED, Vl, D, ϵ, τ; sparams...)
+#         plot_pol!(p, POLTsym, ME_HOMO, Vl, D, ϵ, τ; sparams...)
+#         plot_pol!(p, POLTsym, ME_BOUNDED, Vl, D, ϵ, τ; sparams...)
+#         push!(ps, p)
         
-        mysavefig(ps, "Marginals_$(POLTsym)_"; Vl, D, ϵ)
-    end
-end
+#         mysavefig(ps, "Marginals_$(POLTsym)_"; Vl, D, ϵ)
+#     end
+# end
 
 ## ----------------------------------------------------------------------------
 # let
@@ -265,16 +296,6 @@ let
     end
     mysavefig(p, "$(ME_EXPECTED)_beta_vs_eps_D_colored")
 end
-
-## ----------------------------------------------------------------------------
-# let
-#     for (Vl, D, ϵ, τ) = EXP_PARAMS
-#         MINDEX[:STATUS, Vl, D, ϵ, τ] != :stst && continue
-#         dat = idxdat([:DyMs], Vl, D, ϵ, τ)
-#         @show length(dat)
-#         break
-#     end
-# end
 
 ## ----------------------------------------------------------------------------
 # Bound Correlation

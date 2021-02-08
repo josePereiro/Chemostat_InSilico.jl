@@ -127,13 +127,19 @@ function run_FBA!(M, FBAmode; LP_cache, δ, δμ, DyBiom, verbose = true)
     # Find maximum feasible vatp
     vatp_range, vg_ranges = InLP.vatpvg_ranges(M)
     max_vatp = -Inf
+    min_vg = Inf
+    # (max_vatp, min_vg) will maximize the yield
     for (vatpi, vatp) in vatp_range |> enumerate
-        isempty(vg_ranges[vatpi]) && continue
-        vatp > max_vatp && (max_vatp = vatp)
+        vg_range = vg_ranges[vatpi]
+        isempty(vg_range) && continue
+        if vatp > max_vatp
+            max_vatp = vatp
+            min_vg = minimum(vg_range)
+        end
     end
     @assert !isinf(max_vatp)
 
-    fbaf(vatp, vg) = vatp == max_vatp ? 1.0 : 0.0
+    fbaf(vatp, vg) = (vatp == max_vatp && vg == min_vg) ? 1.0 : 0.0
     FBAMs = InLP.get_marginals(fbaf, M; δ, LP_cache, verbose)
     return FBAMs
 end
@@ -170,6 +176,11 @@ end
 #     run_FBA!(M, FBAmode; LP_cache, δ, δμ, DyBiom, verbose = false)
 
 # end
+
+## ----------------------------------------------------------------------------
+# TODO: make script args
+REDO_MAXENT = false
+REDO_FBA = true
 
 ## ----------------------------------------------------------------------------
 # COMPUTE MARGINALS
@@ -224,14 +235,26 @@ let
         
         ## ----------------------------------------------------------------------------
         if isfile(cfile) # Check caches
-            lock(WLOCK) do
-                @info("Cache found (Skipping) $c/$N ... ", 
-                    (Vl, D, ϵ, τ), 
-                    status, basename(cfile),
-                    threadid()
-                ); println()
+            if REDO_MAXENT || REDO_FBA
+                MDAT = deserialize(cfile)
+                lock(WLOCK) do
+                    @info("Cache found (Redoing) $c/$N ... ", 
+                        (Vl, D, ϵ, τ), 
+                        status, basename(cfile),
+                        REDO_MAXENT, REDO_FBA,
+                        threadid()
+                    ); println()
+                end
+            else
+                lock(WLOCK) do
+                    @info("Cache found (Skipping) $c/$N ... ", 
+                        (Vl, D, ϵ, τ), 
+                        status, basename(cfile),
+                        threadid()
+                    ); println()
+                end
+                continue # skip
             end
-            continue
         end
         
         ## ----------------------------------------------------------------------------
@@ -247,6 +270,7 @@ let
         ## ----------------------------------------------------------------------------
         # MaxEnt marginals
         for MEmode in [ME_HOMO, ME_BOUNDED, ME_EXPECTED]
+            isfile(cfile) && !REDO_MAXENT && break
             for POLTsym in [STST_POL, DYN_POL]
                 
                 lock(WLOCK) do
@@ -274,12 +298,13 @@ let
                     MDAT[MEmode, POLTsym, :beta0] = beta0
                     MDAT[MEmode, POLTsym, :POL] = (;vatp_range, vg_ranges)
                 end
-            end
-        end
+            end # for POLTsym
+        end # for MEmode
 
         ## ----------------------------------------------------------------------------
         # FBA
         for FBAmode in [FBA_BOUNDED, FBA_OPEN]
+            isfile(cfile) && !REDO_FBA && break
             for POLTsym in [STST_POL, DYN_POL]
 
                 lock(WLOCK) do
