@@ -108,7 +108,7 @@ INDEX = UJL.DictTree() # To Store relevant information
     stst_th = 0.05
     stst_window = 250
     check_stst_frec = 1000
-    savedat_frec = 10
+    savedat_frec = 100
     info_frec = 100
     push_frec = 10
     death_th = INDEX[:death_th] = 1e-2
