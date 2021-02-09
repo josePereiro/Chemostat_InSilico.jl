@@ -25,8 +25,7 @@ const PROG_FIG_DIR = joinpath(InCh.DYN_FIGURES_DIR, "progress")
 
 while true
     
-    @info "Scanning " DATA_DIR now()
-    println()
+    @info("Scanning ", DATA_DIR, now()); println()
 
     for file in readdir(DATA_DIR)
         !startswith(file, DATA_FILE_PREFFIX) && continue
@@ -35,6 +34,7 @@ while true
         datfile = joinpath(DATA_DIR, file)
 
         # fig file
+        !isdir(PROG_FIG_DIR) && mkpath(PROG_FIG_DIR)
         fname = replace(file, DATA_FILE_PREFFIX => "fig")
         fname, _ = splitext(fname)
         fname = string(fname, ".png")
@@ -42,16 +42,18 @@ while true
 
         if !isfile(figfile) || mtime(datfile) > mtime(figfile)
             # save fig
-            status, TS, M = deserialize(datfile)
+            try
+                status, TS, M = deserialize(datfile)
             
-            @info "Updating progress" fname now()
-            println()
-            
-            p = InLP.plot_res(M, TS)
-            savefig(p, figfile)
+                @info("Updating progress", fname, now()); println()
+                
+                p = InLP.plot_res(M, TS)
+                savefig(p, figfile)
+            catch err
+                @warn("ERROR", err); println()
+            end
         else
-            @info "Up to date" fname now()
-            println()
+            @info("Up to date", fname, now()); println()
         end
     end
     sleep(rand(3:8))

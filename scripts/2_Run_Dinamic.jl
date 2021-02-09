@@ -2,7 +2,6 @@ import DrWatson: quickactivate
 quickactivate(@__DIR__, "Chemostat_InSilico")
 
 @time begin
-
     import Chemostat_InSilico
     const InCh = Chemostat_InSilico
     const InLP = InCh.LP_Implement
@@ -40,6 +39,25 @@ function check_stst(ts; stst_window, stst_th)
     return true
 end
 
+# ## ----------------------------------------------------------------------------
+# let
+#     M0 = InLP.SimModel(;
+#             δvatp = 2, 
+#             δvg = 3, 
+#             niters = 20,
+#             X0 = 1.3,
+#             sg0 = 15.0,
+#             sl0 = 0.0,
+#             Δt = 0.5,
+#         )
+
+#     # on_iter(it, M) = (sleep(1.0); false)
+#     on_iter(it, M) = false
+#     InLP.run_simulation!(M0; on_iter, verbose_frec = 10)
+# end;
+
+# ## ----------------------------------------------------------------------------
+# ## ----------------------------------------------------------------------------
 ## ----------------------------------------------------------------------------
 # Simulation 
 INDEX = UJL.DictTree() # To Store relevant information
@@ -53,7 +71,7 @@ INDEX = UJL.DictTree() # To Store relevant information
             δvatp = 2, 
             δvg = 3, 
             niters = Int(5e4),
-            X0 = 1.5,
+            X0 = 0.3,
             sg0 = 15.0,
             sl0 = 0.0,
             Δt = 0.5,
@@ -75,51 +93,68 @@ INDEX = UJL.DictTree() # To Store relevant information
     death_th = INDEX[:death_th] = 1e-2
 
     # Params
-    Vls = [0.0, 0.1]
-    Ds = INDEX[:Ds]= [0.003:0.001:0.045;]
-    ϵs = INDEX[:ϵs] = [0.01, 0.1, 0.5, 1.0]
-    τs = [0.0, 0.0022]
+    # Vls = [0.0, 0.1]
+    Vls = INDEX[:Vls] = [0.0]
+    # Ds = INDEX[:Ds]= [0.003:0.001:0.045;]
+    Ds = INDEX[:Ds] = [0.003:0.005:0.045;]
+    ϵs = INDEX[:ϵs] = [0.01, 0.1, 0.3, 0.5, 0.8, 1.0]
+    # τs = [0.0, 0.0022]
+    τs = INDEX[:τs] = [0.0]
     
-    params = Iterators.product(Vls, Ds, ϵs, τs) |> collect |> shuffle! # distribute equally between threads
+    # 
+    params = Iterators.product(Vls, Ds, ϵs, τs)
     N = length(params)
-    @info "Computing $(N) iterations"
-    println() 
-
+    @info("Computing $(N) iterations"); println() 
     gc = 0
-    @threads for (Vl, D, ϵ, τ) in params
+    
+    # feeding task
+    Ch = Channel(1) do Ch_
+        for (Vl, D, ϵ, τ) in params
+            put!(Ch_, (Vl, D, ϵ, τ))
+        end 
+    end
 
-        # This must identify the iteration
-        sim_params = (;D, ϵ, τ, Vl, M0.Δt, M0.σ, M0.cg)
+    @threads for thid in 1:nthreads()
+        for (Vl, D, ϵ, τ) in Ch
 
-        # Say hello
-        c = nothing
-        lock(WLOCK) do
-            gc += 1; c = gc
-            @info "Starting $c/$N ..." Vl, D, ϵ, τ now() threadid()
-            println()
-        end
-        
-        # Setup or load cache
-        cfile = dat_file(;sim_params...)
-        if isfile(cfile)
-            status, TS, M = deserialize(cfile)
-            tslen = length(TS.X_ts)
+            # This must identify the iteration
+            sim_params = (;D, ϵ, τ, Vl, M0.Δt, M0.σ, M0.cg)
+
+            # Saying hello
+            c = nothing
             lock(WLOCK) do
-                @info "Cache loaded $c/$N ... " M.X M.sl M.sg tslen status Vl, D, ϵ, τ now() threadid()
-                println()
+                gc += 1; c = gc
+                @info("Starting $c/$N ...", 
+                    (Vl, D, ϵ, τ), 
+                    now(), thid
+                ); println()
             end
-        else
-            M = deepcopy(M0)
-            M.D, M.ϵ, M.Vl, M.τ = D, ϵ, Vl, τ
-            TS = InLP.ResTS()
-            tslen = length(TS.X_ts)
-            status = :running
-        end
-        
-        # Test
-        status == :finished && (status = :running) # Compat
+            
+            # Setup or load cache
+            cfile = dat_file(;sim_params...)
+            if isfile(cfile)
+                status, TS, M = deserialize(cfile)
+                tslen = length(TS.X_ts)
+                lock(WLOCK) do
+                    @info("Cache loaded $c/$N ... ", 
+                        M.X, M.sl, M.sg,
+                        tslen, status, 
+                        (Vl, D, ϵ, τ), 
+                        now(), thid
+                    ); println()
+                end
+            else
+                # setup model
+                M = deepcopy(M0)
+                M.D, M.ϵ, M.Vl, M.τ = D, ϵ, Vl, τ
+                TS = InLP.ResTS()
+                tslen = length(TS.X_ts)
+                status = :running
+            end
+            
+            # Test
+            status == :finished && (status = :running) # Compat
 
-        if status == :running
             function on_iter(it, _)
 
                 # update tslen
@@ -153,23 +188,37 @@ INDEX = UJL.DictTree() # To Store relevant information
                 show_info = rem(it, info_frec) == 0
                 if show_info
                     lock(WLOCK) do
-                        @info "Doing $c/$N ... " it M.X M.sl M.sg tslen status Vl, D, ϵ, τ now() threadid()
-                        println()
+                        @info("Doing $c/$N ... ", 
+                            it, M.X, M.sl, M.sg, 
+                            tslen, status, 
+                            (Vl, D, ϵ, τ),
+                            now(), thid
+                        ); println()
                     end
                 end
 
                 return finished
             end
-            InLP.run_simulation!(M; on_iter, LP_cache, verbose = false, force = false)
-        end # if status == :running
-        
-        lock(WLOCK) do
-            @info "Finished $c/$N ... " M.X M.sl M.sg tslen status Vl, D, ϵ, τ now() threadid()
-            INDEX[:DFILE, Vl, D, ϵ, τ] = cfile
-            println()
-            GC.gc()
-        end
-    end # @threads for (Vl, D, ϵ, τ)
+            
+            if status == :running 
+                InLP.run_simulation!(M; 
+                    on_iter, LP_cache, 
+                    verbose = false
+                )
+            end
+            
+            lock(WLOCK) do
+                @info("Finished $c/$N ... ", 
+                    M.X, M.sl, M.sg, 
+                    tslen, status, 
+                    (Vl, D, ϵ, τ), 
+                    now(), thid
+                ); println()
+                INDEX[:DFILE, Vl, D, ϵ, τ] = cfile
+                GC.gc()
+            end
+        end # for (Vl, D, ϵ, τ)
+    end # @threads for thid
 end
 
 ## -----------------------------------------------------------------------------------------------

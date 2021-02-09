@@ -13,11 +13,9 @@ mutable struct SimModel
     δvg::Int                 # exactness of vg discretization dvatp = 10.0^-(δvg)
     
     cg::Float64              # (mM) feed glc concentration
-    Kg::Float64              # (mM) glc MM constant
     Vg::Float64              # (mmol/ gDW h) upper glc max bound
 
     cl::Float64              # (mM) feed lac concentration
-    Kl::Float64              # (mM) lac MM constant
     Vl::Float64              # (mmol/ gDW h) upper lac max bound
 
     ϵ::Float64               # mutation rate (%)
@@ -38,8 +36,8 @@ mutable struct SimModel
     # Fernandez-de-Cossio-Diaz, Jorge, Roberto Mulet, and Alexei Vazquez. (2019) https://doi.org/10.1038/s41598-019-45882-w.
     function SimModel(;net = ToyModel(), δvatp = 2, δvg = 3, Δt = 0.1,
             X0 = 1.5, D0 = 1e-2,                                          
-            cg = 15.0, sg0 = 15.0, Kg = 0.5, Vg = 0.5,
-            cl = 0.0, sl0 = 0.0, Kl = 0.5, Vl = 0.1,
+            cg = 15.0, sg0 = 15.0, Vg = 0.5,
+            cl = 0.0, sl0 = 0.0, Vl = 0.0, # 0.1
             σ = 0.01, τ = 0.0022, ϵ = 0.0,                                            
             num_min = -1e30, num_max = 1e30, 
             niters = 20000, 
@@ -54,8 +52,8 @@ mutable struct SimModel
         obj_idx = rxnindex(net, obj_ider)
 
         # update net
-        net.ub[vg_idx] = max(net.lb[vg_idx], (Vg * sg0) / (Kg + sg0))
-        net.ub[vl_idx] = max(net.lb[vl_idx], (Vl * sl0) / (Kl + sl0))
+        net.ub[vg_idx] = max(net.lb[vg_idx], Vg)
+        net.ub[vl_idx] = max(net.lb[vl_idx], Vl)
 
         # board
         Xb = Dict{Float64, Dict{Float64, Float64}}()
@@ -66,13 +64,12 @@ mutable struct SimModel
             Xi = clamp(X0/N, 0.0, num_max)
             complete_board!(Xb, i_vatp_range, vg_ranges, Xi)
         end    
-        X_ts = [X0]
         
         new(
             net, vatp_idx, vg_idx, vl_idx, obj_idx, 
             δvatp, δvg, 
-            cg, Kg, Vg, 
-            cl, Kl, Vl, 
+            cg, Vg, 
+            cl, Vl, 
             ϵ, σ, τ,
             Δt, niters,
             D0, sg0, sl0, X0, Xb

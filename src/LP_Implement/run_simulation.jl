@@ -3,8 +3,6 @@ function run_simulation!(M::SimModel;
         on_iter = (it, M) -> false,
         verbose = true,
         verbose_frec = 10,
-        force = false,
-        force_frac = 100, 
         LP_cache = nothing,
         cache_marginf::Float64 = 1.5
     )
@@ -18,33 +16,19 @@ function run_simulation!(M::SimModel;
     # extract model constants
     Xb =  M.Xb
     vatp_idx, vg_idx, vl_idx, obj_idx = M.vatp_idx, M.vg_idx, M.vl_idx, M.obj_idx
-    cg, cl, Vg, Kg, Vl, Kl = M.cg, M.cl, M.Vg, M.Kg, M.Vl, M.Kl
+    cg, cl, Vg, Vl = M.cg, M.cl, M.Vg, M.Vl
 
     σ, τ, Δt = M.σ, M.τ, M.Δt
-    
-    ## ---------------------------------------------------------
-    # update model
-    function update_net!(net) 
-        ub1 = cg * M.D / M.X                # conservation of matter 
-        ub2 = (Vg * M.sg) / (Kg + M.sg)     # Michaelis-Menten dynamic
-        net.ub[vg_idx] = max(net.lb[vg_idx], min(ub1, ub2))
-
-        ub1 = cl * M.D / M.X                # conservation of matter 
-        ub2 = (Vl * M.sl) / (Kl + M.sl)     # Michaelis-Menten dynamic
-        net.ub[vl_idx] = max(net.lb[vl_idx], min(ub1, ub2))
-    end
-    
-    update_net!(M.net) 
-    net_pool = map((i) -> deepcopy(M.net), 1:nthreads())
-    all_nets = [M.net; net_pool]
 
     verbose && (prog = Progress(M.niters; desc = "Simulating ... ", dt = 0.5))
-    i_vatp_range, vatp_range, vg_ranges = nothing, nothing, nothing
-    vg_ub0, vl_ub0 = Inf, Inf
-    vatpvgN, vatpN = 0, 0
-    recompute_ranges_th = (10.0^(-M.δvg))/3
-    wage = similar_board(Xb, 0) # world age
     ittime_prom = 0.0
+
+    ## ---------------------------------------------------------
+    # ranges (recompute ranges if the polytope change)
+    vatp_range, vg_ranges = vatpvg_ranges(M)
+    i_vatp_range = vatp_range |> enumerate |> collect
+    vatpvgN = sum(length.(values(vg_ranges))) # total regions
+    vatpN = length(i_vatp_range)
 
     for it in 1:M.niters
 
@@ -54,139 +38,83 @@ function run_simulation!(M::SimModel;
             on_iter(it, M) && break # feed back
 
             ## ---------------------------------------------------------
-            # Check if the polytope changed
-            politope_changed = abs(M.net.ub[vg_idx] - vg_ub0) > recompute_ranges_th ||
-                               abs(M.net.ub[vl_idx] - vl_ub0) > recompute_ranges_th
-
-            ## ---------------------------------------------------------
-            lazy_iter = !(politope_changed || force || rem(it, force_frac) == 0)
-
-            ## ---------------------------------------------------------
-            # ranges (recompute ranges if the polytope change)
-            if !lazy_iter
-                i_vatp_range, vatp_range, vg_ranges = ivatpvg_ranges(M, net_pool)
-                vatpvgN = sum(length.(values(vg_ranges))) # total regions
-                vatpN = length(i_vatp_range)
-                vg_ub0, vl_ub0 = M.net.ub[vg_idx], M.net.ub[vl_idx]
-            end
-            
-            ## ---------------------------------------------------------
-            # complete boards
-            if !lazy_iter
-                complete_board!(Xb, i_vatp_range, vg_ranges, 0.0)
-                complete_board!(wage, i_vatp_range, vg_ranges, 0)
-            end
-
-            ## ---------------------------------------------------------
-            # vatp dependent
-            z = zeros(vatpN)
-            Σvg__X = zeros(vatpN)
-
-            @threads for (vatpi, vatp) in i_vatp_range
-                vg_range = vg_ranges[vatpi]
-
-                lXb = Xb[vatp]
-                lwage = wage[vatp]
-
-                Σvg__Xi = 0.0
-                for vg in vg_range
-                    Σvg__Xi += lXb[vg]
-                    lwage[vg] = it
+            # Growth average
+            av_zX = 0.0
+            for (vatp, lX) in M.Xb
+                lcache = LP_cache[vatp]
+                for (vg, X) in lX
+                    z = lcache[vg][obj_idx]
+                    av_zX += z * X
                 end
-                Σvg__X[vatpi] = Σvg__Xi
-
-                vg0 = first(vg_range)
-                z[vatpi] = LP_cache[vatp][vg0][obj_idx]
             end
+            av_zX /= vatpvgN
 
-            Σ_vatp_vg__z_X = sum(z[vatpi] * Σvg__X[vatpi] for (vatpi, vatp) in i_vatp_range)
-            term2 = M.ϵ * (Σ_vatp_vg__z_X) / vatpvgN # global average
-
-            @threads for (vatpi, vatp) in i_vatp_range
+            ## ---------------------------------------------------------
+            # update biomass distribution
+            neg_factor = M.D + τ * M.sl + σ
+            for (vatpi, vatp) in i_vatp_range
                 vg_range = vg_ranges[vatpi]
-                
-                vgN = length(vg_range)
-                term1 = (1 - M.ϵ) * (z[vatpi]* Σvg__X[vatpi]) / vgN # local average
-                
-                lXb = Xb[vatp]
-                term1_term2 = term1 + term2
+
+                lXb = M.Xb[vatp]
+                lcache = LP_cache[vatp]
 
                 for vg in vg_range
+                    z = lcache[vg][obj_idx]
                     Xᵢ₋₁ = lXb[vg]
-                    term3 = Xᵢ₋₁ * (M.D + τ * M.sl + σ) # cellular dead/loose
-
-                    # update X
-                    ΔX = (term1_term2 - term3) * Δt
+                    neg_term = Xᵢ₋₁ * neg_factor
+                    pos_term = (1 - M.ϵ) * Xᵢ₋₁ * z  + M.ϵ * av_zX
+                    ΔX = (pos_term - neg_term) * Δt
                     Xᵢ = Xᵢ₋₁ + ΔX
                     lXb[vg] = max(0.0, Xᵢ)
                 end
             end
-            # end
-            
+
             ## ---------------------------------------------------------
-            # Update Xb (let unfeasible out)
-            # vatp
-            if !lazy_iter
-
-                ## ---------------------------------------------------------
-                # Compute feasible and unfeasible total X
-                Xfea = 0.0
-                Xunfea = 0.0
-                for (vatp, lXb) in Xb
-                    lwage = wage[vatp]
-                    for (vg, lX) in lXb
-                        if lwage[vg] != it # unfeasible
-                            Xunfea += lX
-                            lXb[vg] = 0.0
-                        else
-                            Xfea += lX
-                        end
-                    end
-                end
-
-                ## ---------------------------------------------------------
-                # redistribute Xunfea (maintaining the distribution shape)
-                # ΔX = (X/Xfea)*Xunfea = X * Xunfea/Xfea
-                # Compute unfeasible
-                Xfac = Xunfea/ Xfea
-                for (vatp, lXb) in Xb
-                    lwage = wage[vatp]
-                    for (vg, lX) in lXb
-                        lXb[vg] += lX * Xfac
-                    end
-                end
-            end #if !lazy_iter
+            # update X
             M.X = sum(sum.(values.(values(Xb)))) # total X
 
             ## ---------------------------------------------------------
-            # concs
-            Σ_vatp_vg__vg_X_pool = zeros(nthreads())
-            Σ_vatp_vg__vl_X_pool = zeros(nthreads())
-            @threads for (vatpi, vatp) in i_vatp_range
-                tid = threadid()
+            # Enforce uptake balances
+            # The total biomass in the culture must be so av_ui <= ci D / X
+            av_vg = 0.0
+            av_vl = 0.0
+            for (vatp, lX) in M.Xb
                 lcache = LP_cache[vatp]
-                lXb = Xb[vatp]
-                for vg in vg_ranges[vatpi]
+                for (vg, X) in lX
                     vl = lcache[vg][vl_idx]
-                    lX = lXb[vg]
-                    Σ_vatp_vg__vg_X_pool[tid] += vg * lX
-                    Σ_vatp_vg__vl_X_pool[tid] += vl * lX
+                    av_vg += vg * X
+                    av_vl += vl * X
                 end
             end
-            Σ_vatp_vg__vg_X = sum(Σ_vatp_vg__vg_X_pool)
-            Σ_vatp_vg__vl_X = sum(Σ_vatp_vg__vl_X_pool)
 
+            # if γ < 1.0 biomass need a rectification
+            γvg = M.cg == 0.0 || av_vg <= 0.0 ? Inf : (M.cg / av_vg) * (M.D / M.X)
+            γvl = M.cl == 0.0 || av_vl <= 0.0 ? Inf : (M.cl / av_vl) * (M.D / M.X)
+            γ = min(γvg, γvl) 
+            if 0.0 <= γ < 1.0 
+                for (vatpi, vatp) in i_vatp_range
+                    vg_range = vg_ranges[vatpi]
+                    lX = M.Xb[vatp]
+                    for vg in vg_range
+                        lX[vg] *= γ
+                    end
+                end
+
+                # recompute 
+                M.X *= γ
+                av_vg *= γ
+                av_vl *= γ
+            end
+            
+            ## ---------------------------------------------------------
+            # update vessel concentration
             # update sg
-            Δsg = (-Σ_vatp_vg__vg_X + M.D * (M.cg - M.sg)) * Δt
+            Δsg = (-av_vg + M.D * (M.cg - M.sg)) * Δt
             M.sg = max(0.0, M.sg + Δsg)
 
             # update sl
-            Δsl = (-Σ_vatp_vg__vl_X + M.D * (M.cl - M.sl)) * Δt
+            Δsl = (-av_vl + M.D * (M.cl - M.sl)) * Δt
             M.sl = max(0.0, M.sl + Δsl)
-
-            ## ---------------------------------------------------------
-            # Update polytope
-            foreach(update_net!, all_nets)
 
         end # t = @elapsed begin
 
@@ -199,19 +127,26 @@ function run_simulation!(M::SimModel;
                 (:ittime, ittime),
                 (:D, M.D),
                 (:Δt, Δt),
-                (:force, force),
-                (:politope_changed, politope_changed),
-                (:lazy_iter, lazy_iter),
+                (:γ, γ),
+                (:γvg, γvg),
+                (:γvl, γvl),
                 (": ------ ", "------------------"),
                 (:X, M.X),
+                (:av_zX, av_zX),
+                (": ------ ", "------------------"),
                 (:sg, M.sg),
                 (:Δsg, Δsg),
+                (:av_vg, av_vg),
+                (:av_vg_ub, M.cg * M.D / M.X),
+                (": ------ ", "------------------"),
                 (:sl, M.sl),
                 (:Δsl, Δsl),
+                (:av_vl, av_vl),
+                (:av_vl_ub, M.cl * M.D / M.X),
+                (": ------ ", "------------------"),
                 (:vg_ub, M.net.ub[vg_idx]),
                 (:vl_ub, M.net.ub[vl_idx]),
-                (:vatpvgN, vatpvgN),
-                (:Xb_len, sum(length.(values(Xb)))),
+                (:vatpvgN, vatpvgN)
             ]
         )
 
