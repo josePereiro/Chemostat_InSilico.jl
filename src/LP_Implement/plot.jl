@@ -22,9 +22,7 @@ function plot_res(M::SimModel, TS::ResTS; f = (x) -> x, marginf = 0.2)
     # polytope
     p4 = plot(xlabel = "vatp", ylabel = "vg")
     plot_polborder!(p4, M)
-    plot_poldist!(p4, M; hits_count = 500,
-        static_th = 0.05, rand_th = 1.0
-    )
+    plot_poldist!(p4, M; static_th = 0.8)
     
     p = plot([p1, p2, p3, p4]...;
         size = [800, 700], layout = 4)
@@ -94,44 +92,33 @@ function plot_marginals(marginals, rxns = keys(marginals))
 end
 
 ## ----------------------------------------------------------------------------
-function plot_poldist!(p, M::SimModel; 
-        hits_count = 3000,
-        maxiters = 100 * hits_count,
-        static_th = 0.8, rand_th = 0.1,
-        pkwargs = Dict(), skwargs = Dict()
+function plot_poldist!(p, 
+        M; static_th = 0.8, ssize = 1000, 
+        pkwargs = Dict(), skwargs = Dict(), 
+        min_ms = 3.0, max_ms = 15.0
     )
-    
-    vatp_range, vg_ranges = vatpvg_ranges(M)
-    vgL, vgU = minimum(first.(vg_ranges)), maximum(last.(vg_ranges))
-    Δvg = step(first(vg_ranges))
-    vg_range = vgL:Δvg:vgU
+
+    Xlav = M.X / vatpvgN(M)
     mX, MX = lXgamma(M)
-    vatpvgN = sum(length.(vg_ranges))
-
-    hits = 0
-    iters = 0
-    vatps, vgs, mss = [], [], []
-
-    while vatpvgN > 1 && hits < hits_count && iters < maxiters
-        iters += 1
-        vatp = rand(vatp_range)
-        vg = rand(vg_range)
-        !haskey(M.Xb, vatp) && continue
-        !haskey(M.Xb[vatp], vg) && continue
-
-        lX = M.Xb[vatp][vg]
-        lX/MX < static_th && rand_th > rand() && continue
-        
-        ms = 10.0 * lX/MX
-        push!(vatps, vatp); push!(vgs, vg); push!(mss, ms)
-        hits += 1
+    coords = []
+    for (vatp, lXb) in M.Xb
+        for (vg, X) in lXb
+            X/Xlav < static_th && continue
+            push!(coords, (vatp, vg, X/MX))
+        end
     end
+    shuffle!(coords)
 
-    scatter!(p, vatps, vgs; 
-        color = :black, label = "", ms = mss, 
-        alpha = 0.2, skwargs...
+    sample = length(coords) < ssize ? coords : coords[1:ssize]
+    xs = getindex.(sample, 1)
+    ys = getindex.(sample, 2)
+    ms = max.(min_ms, getindex.(sample, 3) .* max_ms)
+    scatter!(p, xs, ys;
+        color = :black, label = "", 
+        ms, alpha = 0.2, skwargs...
     )
     plot!(p; pkwargs...)
+
 end
 plot_poldist(M::SimModel; kwargs...) = plot_poldist!(plot(xlabel = "vatp", ylabel = "vg"), M;  kwargs...)
 

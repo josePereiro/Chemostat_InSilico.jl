@@ -1,5 +1,5 @@
 # Sim function
-function run_simulation!(M::SimModel; 
+function run_simulation_fX!(M::SimModel; 
         on_iter = (it, M) -> false,
         verbose = true,
         verbose_frec = 10,

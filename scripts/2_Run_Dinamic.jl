@@ -40,25 +40,46 @@ function check_stst(ts; stst_window, stst_th)
 end
 
 # ## ----------------------------------------------------------------------------
+# using Plots
 # let
+#     D = 5e-2
+#     ϵ = 0.05
+
 #     M0 = InLP.SimModel(;
 #             δvatp = 2, 
 #             δvg = 3, 
-#             niters = 20,
-#             X0 = 1.3,
-#             sg0 = 15.0,
+#             niters = 5,
+#             X0 = 1.5,
+#             sg0 = 3.0,
+#             cg = 3.0,
 #             sl0 = 0.0,
 #             Δt = 0.5,
+#             D0 = D, ϵ
 #         )
 
-#     # on_iter(it, M) = (sleep(1.0); false)
-#     on_iter(it, M) = false
-#     InLP.run_simulation!(M0; on_iter, verbose_frec = 10)
+#     # vatp_range, vg_ranges_i = InLP.vatpvg_ranges(M0)
+#     # i_vatp_range = vatp_range |> enumerate |> collect
+#     # vg_ranges = Dict(vatp => vg_ranges_i[vatpi] for (vatpi, vatp) in i_vatp_range)
+
+#     # γ = 0.22
+#     # old_vatp = maximum(vatp_range)
+#     # new_vatp = InLP.discretize(γ * old_vatp, M0.δvatp, vatp_range; def_mode = RoundDown)
+#     # @show γ old_vatp γ * old_vatp new_vatp 
+    
+#     function on_iter(it, M)
+            
+#         PROG_FIG_DIR = joinpath(InCh.DYN_FIGURES_DIR, "progress")
+#         p = plot(xlabel = "vatp", ylabel = "vg")
+#         InLP.plot_polborder!(p, M)
+#         InLP.plot_poldist!(p, M; static_th = 0.5)
+#         UJL.mysavefig(p, "test", PROG_FIG_DIR; it, D, ϵ)
+
+#         return false
+#     end
+#     InLP.run_simulation_fPx!(M0; on_iter, verbose_frec = 1, verbose = false)
 # end;
 
-# ## ----------------------------------------------------------------------------
-# ## ----------------------------------------------------------------------------
-## ----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 # Simulation 
 INDEX = UJL.DictTree() # To Store relevant information
 @time let
@@ -87,7 +108,7 @@ INDEX = UJL.DictTree() # To Store relevant information
     stst_th = 0.05
     stst_window = 250
     check_stst_frec = 1000
-    savedat_frec = 1000
+    savedat_frec = 10
     info_frec = 100
     push_frec = 10
     death_th = INDEX[:death_th] = 1e-2
@@ -95,9 +116,10 @@ INDEX = UJL.DictTree() # To Store relevant information
     # Params
     # Vls = [0.0, 0.1]
     Vls = INDEX[:Vls] = [0.0]
-    # Ds = INDEX[:Ds]= [0.003:0.001:0.045;]
-    Ds = INDEX[:Ds] = [0.003:0.005:0.045;]
-    ϵs = INDEX[:ϵs] = [0.01, 0.1, 0.3, 0.5, 0.8, 1.0]
+    Ds = INDEX[:Ds]= [0.003:0.001:0.045;]
+    # Ds = INDEX[:Ds] = [1e-2]
+    # ϵs = INDEX[:ϵs] = [0.01, 0.1, 0.3, 0.5, 0.8, 1.0]
+    ϵs = INDEX[:ϵs] = [0.01, 0.5, 1.0]
     # τs = [0.0, 0.0022]
     τs = INDEX[:τs] = [0.0]
     
@@ -201,7 +223,7 @@ INDEX = UJL.DictTree() # To Store relevant information
             end
             
             if status == :running 
-                InLP.run_simulation!(M; 
+                InLP.run_simulation_fPx!(M; 
                     on_iter, LP_cache, 
                     verbose = false
                 )

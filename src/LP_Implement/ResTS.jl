@@ -13,3 +13,5 @@ function Base.push!(ts::ResTS, M::SimModel)
     push!(ts.D_ts, M.D)
     push!(ts.X_ts, M.X)
 end
+
+Base.length(ts::ResTS) = length(ts.X_ts)
