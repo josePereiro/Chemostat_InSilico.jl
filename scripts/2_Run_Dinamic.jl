@@ -107,6 +107,7 @@ INDEX = UJL.DictTree() # To Store relevant information
     # simulation params
     stst_th = 0.05
     stst_window = 250
+    check_stst_init = 2000
     check_stst_frec = 1000
     savedat_frec = 100
     info_frec = 100
@@ -116,10 +117,10 @@ INDEX = UJL.DictTree() # To Store relevant information
     # Params
     # Vls = [0.0, 0.1]
     Vls = INDEX[:Vls] = [0.0]
-    Ds = INDEX[:Ds]= [0.003:0.001:0.045;]
+    Ds = INDEX[:Ds]= 0.003:0.001:0.05 |> collect
     # Ds = INDEX[:Ds] = [1e-2]
     # ϵs = INDEX[:ϵs] = [0.01, 0.1, 0.3, 0.5, 0.8, 1.0]
-    ϵs = INDEX[:ϵs] = [0.01, 0.5, 1.0]
+    ϵs = INDEX[:ϵs] = [0.01, 0.1, 0.5, 1.0]
     # τs = [0.0, 0.0022]
     τs = INDEX[:τs] = [0.0]
     
@@ -183,7 +184,7 @@ INDEX = UJL.DictTree() # To Store relevant information
                 tslen = length(TS.X_ts)
                 
                 # check steady state
-                stst = rem(it, check_stst_frec) == 0 && 
+                stst = it > check_stst_init && rem(it, check_stst_frec) == 0 && 
                     check_stst(TS; stst_window, stst_th)
                 stst && (status = :stst)
                 
@@ -236,7 +237,7 @@ INDEX = UJL.DictTree() # To Store relevant information
                     (Vl, D, ϵ, τ), 
                     now(), thid
                 ); println()
-                INDEX[:DFILE, Vl, D, ϵ, τ] = cfile
+                INDEX[:DFILE, Vl, D, ϵ, τ] = relpath(cfile, InCh.PROJECT_DIR)
                 GC.gc()
             end
         end # for (Vl, D, ϵ, τ)

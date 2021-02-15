@@ -3,6 +3,7 @@ module LP_Implement
 import MathProgBase.HighLevelInterface: linprog
 import Clp: ClpSolver
 using ..Chemostat_InSilico
+const InCh = Chemostat_InSilico
 import UtilsJL: mysavename, get_chuncks, err_str, ITERABLE, make_grid, DictTree, _auto_layout
 import ProgressMeter: Progress, update!, next!, finish!
 import Serialization: serialize, deserialize

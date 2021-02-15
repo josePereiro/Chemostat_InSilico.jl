@@ -34,11 +34,9 @@ minmax(a) = isempty(a) ? (0.0, 0.0) : (minimum(a), maximum(a))
 
 ## ----------------------------------------------------------------------------
 # Prepare network
-const STST_POL = :STST_POL         # Use polytope computed from chemostat stst assertion
-const DYN_POL = :DYN_POL           # Use dynamic polytope
-
 const ME_HOMO = :ME_HOMO           # Do not use extra constraints
 const ME_EXPECTED = :ME_EXPECTED   # Match ME and Dy biom average
+const ME_CUTTED = :ME_CUTTED     # Match ME and Dy biom average and constraint av_ug
 const ME_BOUNDED = :ME_BOUNDED     # Fix biom around observed
 
 const FBA_OPEN = :FBA_OPEN
@@ -47,24 +45,28 @@ const FBA_BOUNDED = :FBA_BOUNDED
 MOD_COLORS = Dict(
     ME_HOMO => :red, 
     ME_BOUNDED => :orange,
-    ME_EXPECTED => :blue,
+    ME_CUTTED => :blue,
+    ME_EXPECTED => :purple,
     FBA_BOUNDED => :green,
-    FBA_OPEN => :purple,
+    FBA_OPEN => :yellow,
 )
 
-POL_STYLE = Dict(
-    STST_POL => :dot,
-    DYN_POL => :dash,
+MOD_LS = Dict(
+    ME_HOMO => :dash, 
+    ME_BOUNDED => :dash,
+    ME_CUTTED => :dash,
+    ME_EXPECTED => :dash,
+    FBA_BOUNDED => :dot,
+    FBA_OPEN => :dot,
 )
 
 ## ----------------------------------------------------------------------------
 # Marginals
-# MDAT[MODsym, POLTsym, :M, Vl, D, ϵ, τ]
-# MDAT[MODsym, POLTsym, :Ms, Vl, D, ϵ, τ]
-# MDAT[MODsym, POLTsym, :beta0, Vl, D, ϵ, τ]
+# MDAT[MODsym, :M, Vl, D, ϵ, τ]
+# MDAT[MODsym, :Ms, Vl, D, ϵ, τ]
+# MDAT[MODsym, :beta0, Vl, D, ϵ, τ]
 # MDAT[:STATUS, Vl, D, ϵ]
 MINDEX = UJL.load_data(InCh.MARGINALS_INDEX_FILE)
-POLTsym = STST_POL
 EXP_PARAMS = Iterators.product(MINDEX[[:Vls, :Ds, :ϵs, :τs]]...)
 idxdat(dk, indexks...) = InLP.idxdat(MINDEX, dk, indexks...)
 
@@ -75,9 +77,9 @@ mysavefig(p, pname; params...) =
 
 ## ----------------------------------------------------------------------------
 # Plot functions
-function plot_pol!(p, POLTsym, MODsym, Vl, D, ϵ, τ; sparams...)
+function plot_pol!(p, MODsym, Vl, D, ϵ, τ; sparams...)
     
-    vatp_range, vg_ranges = idxdat([MODsym, POLTsym, :POL], Vl, D, ϵ, τ)
+    vatp_range, vg_ranges = idxdat([MODsym, :POL], Vl, D, ϵ, τ)
     vatps, vgLs, vgUs = [], [], []
     
     for (vatpi, vatp) in enumerate(vatp_range)
@@ -90,29 +92,28 @@ function plot_pol!(p, POLTsym, MODsym, Vl, D, ϵ, τ; sparams...)
     end
 
     color = MOD_COLORS[MODsym]
-    params = (;label = "", ls = POL_STYLE[POLTsym], 
-        alpha = 0.4, color, lw = 8, sparams...)
+    params = (;label = "", alpha = 0.8, color, lw = 8, sparams...)
     plot!(p, [vatps], [vgLs]; params...)
     plot!(p, [vatps], [vgUs]; params...)
     p
 end
 
-function plot_marginals!(p, MODsyms, POLTsym, rxn, Vl, D, ϵ, τ; sparams...)
+function plot_marginals!(p, MODsyms, rxn, Vl, D, ϵ, τ; sparams...)
 
-    ls = POL_STYLE[POLTsym]
     DyMs = idxdat([:DyMs], Vl, D, ϵ, τ)
     plot!(p, DyMs[rxn]; label = "", sparams..., color = :black)
     
     # Marginals
     for MODsym in MODsyms
+        ls = MOD_LS[MODsym] 
         color = MOD_COLORS[MODsym]
-        Ms = idxdat([MODsym, POLTsym, :Ms], Vl, D, ϵ, τ)
-        plot!(p, Ms[rxn]; label = "", color, sparams...)
+        Ms = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
+        plot!(p, Ms[rxn]; label = "", color, ls, sparams...)
     end
     return p
 end
-plot_marginals!(p, MODsyms::Symbol, POLTsym, rxn, Vl, D, ϵ, τ; sparams...) = 
-    plot_marginals!(p, [MODsyms], POLTsym, rxn, Vl, D, ϵ, τ; sparams...)
+plot_marginals!(p, MODsyms::Symbol, rxn, Vl, D, ϵ, τ; sparams...) = 
+    plot_marginals!(p, [MODsyms], rxn, Vl, D, ϵ, τ; sparams...)
 
 
 # ## ----------------------------------------------------------------------------
@@ -122,12 +123,11 @@ plot_marginals!(p, MODsyms::Symbol, POLTsym, rxn, Vl, D, ϵ, τ; sparams...) =
 #     D = MINDEX[:Ds][2]
 #     ϵ = MINDEX[:ϵs][end]
 #     MODsym = FBA_OPEN
-#     POLsym = STST_POL
 
 #     @info("Doing", 
 #         (Vl, D, ϵ, τ)
 #     ); println()
-#     M = idxdat([MODsym, POLTsym, :M], Vl, D, ϵ, τ)
+#     M = idxdat([MODsym, :M], Vl, D, ϵ, τ)
 
 #     p = plot()
 #     sparams = (;)
@@ -143,9 +143,6 @@ plot_marginals!(p, MODsyms::Symbol, POLTsym, rxn, Vl, D, ϵ, τ; sparams...) =
 # end
 
 ## ----------------------------------------------------------------------------
-## ----------------------------------------------------------------------------
-## ----------------------------------------------------------------------------
-## ----------------------------------------------------------------------------
 # Error
 let
     Vl = MINDEX[:Vls] |> first
@@ -153,10 +150,9 @@ let
     Ds = MINDEX[:Ds] |> sort
     ϵs = MINDEX[:ϵs] |> sort
 
-    MODELS = [ME_BOUNDED, ME_EXPECTED, ME_HOMO, FBA_BOUNDED, FBA_OPEN]
-    POLsym = STST_POL
+    MODELS = [ME_BOUNDED, ME_CUTTED, ME_EXPECTED, ME_HOMO, FBA_BOUNDED, FBA_OPEN]
 
-    p = plot(;tile = "Prediction error", xlabel = "log ϵ", ylabel = "err")
+    p = plot(;tile = "Prediction error", xlabel = "log ϵ", ylabel = "maximum err")
     for MODsym in MODELS
         xs, ys, yerrs = [], [], []
         for ϵ in ϵs
@@ -166,7 +162,7 @@ let
             for D in Ds
                 MINDEX[:STATUS, Vl, D, ϵ, τ] != :stst && continue
                 DyMs = idxdat([:DyMs], Vl, D, ϵ, τ)
-                Ms = idxdat([MODsym, POLsym, :Ms], Vl, D, ϵ, τ)
+                Ms = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
                 
                 for rxn in InLP.RXNS
                     DYN_flx = InLP.av(DyMs[rxn])
@@ -179,53 +175,111 @@ let
             end
 
             push!(xs, ϵ)
-            push!(ys, mean(errs))
-            push!(yerrs, std(errs))
+            push!(ys, maximum(errs))
+            # push!(yerrs, std(errs))
 
         end # for ϵ in ϵs
 
         noise = xs .* 0.1 .* rand.()
-        params = (;alpha = 0.5, color = MOD_COLORS[MODsym])
+        params = (;alpha = 0.8, color = MOD_COLORS[MODsym])
         plot!(p, log10.(xs .+ noise), ys; 
             label = "", lw = 3, ls = :dash, params...
         )
-        scatter!(p, log10.(xs .+ noise), ys; yerr = yerrs, 
+        scatter!(p, log10.(xs .+ noise), ys; # yerr = yerrs, 
             ms = 8, params..., label = string(MODsym), legend = :topleft
         )
     end #  for MODsym 
 
-    mysavefig(p, "eps_vs_err"; POLsym)
+    mysavefig(p, "eps_vs_err")
 
 end
 
-# ## ----------------------------------------------------------------------------
-# # all Marginals
-# let
-#     MODELS = [ME_BOUNDED, ME_EXPECTED, ME_HOMO, FBA_BOUNDED, FBA_OPEN]
-#     return
+## ----------------------------------------------------------------------------
+# all Marginals
+let
+    # MODELS = [ME_BOUNDED, ME_EXPECTED, ME_HOMO, FBA_BOUNDED, FBA_OPEN]
+    MODELS = [ME_EXPECTED, ME_HOMO]
 
-#     for (Vl, D, ϵ, τ) in EXP_PARAMS
-#         MINDEX[:STATUS, Vl, D, ϵ, τ] != :stst && continue
-#         ps = Plots.Plot[]
-#         sparams =(;ylim = [0.0, Inf])
-#         gparams = (xaxis = nothing, yaxis = nothing, grid = false)
-#         for rxn in InLP.RXNS
-#             p = plot(;title = rxn, xlabel = "flx", ylabel = "prob", gparams...)
-#             for  MODsym in MODELS
-#                 plot_marginals!(p, MODsym, POLTsym, rxn, Vl, D, ϵ, τ; sparams...)
-#             end
-#             push!(ps, p)
-#         end
+    for (Vl, D, ϵ, τ) in EXP_PARAMS
+        MINDEX[:STATUS, Vl, D, ϵ, τ] != :stst && continue
+        ps = Plots.Plot[]
+        sparams =(;ylim = [0.0, Inf], lw = 2)
+        gparams = (xaxis = nothing, yaxis = nothing, grid = false)
+        for rxn in InLP.RXNS
+            p = plot(;title = rxn, xlabel = "flx", ylabel = "prob", gparams...)
+            for  MODsym in MODELS
+                plot_marginals!(p, MODsym, rxn, Vl, D, ϵ, τ; sparams...)
+            end
+            push!(ps, p)
+        end
 
-#         p = plot(;title = "polytope", xlabel = "vatp", ylabel = "vg", gparams...)        
-#         plot_pol!(p, POLTsym, ME_EXPECTED, Vl, D, ϵ, τ; sparams...)
-#         plot_pol!(p, POLTsym, ME_HOMO, Vl, D, ϵ, τ; sparams...)
-#         plot_pol!(p, POLTsym, ME_BOUNDED, Vl, D, ϵ, τ; sparams...)
-#         push!(ps, p)
+        p = plot(;title = "polytope", xlabel = "vatp", ylabel = "vg", gparams...)        
+        plot_pol!(p, ME_EXPECTED, Vl, D, ϵ, τ; sparams...)
+        plot_pol!(p, ME_HOMO, Vl, D, ϵ, τ; sparams...)
+        plot_pol!(p, ME_BOUNDED, Vl, D, ϵ, τ; sparams...)
+        push!(ps, p)
         
-#         mysavefig(ps, "Marginals_$(POLTsym)_"; Vl, D, ϵ)
-#     end
-# end
+        mysavefig(ps, "All_Marginals"; Vl, D, ϵ)
+    end
+end
+
+## ----------------------------------------------------------------------------
+# vatp, vg marginals
+let
+    # MODELS = [ME_BOUNDED, ME_EXPECTED, ME_HOMO, FBA_BOUNDED, FBA_OPEN]
+    MODELS = [ME_BOUNDED, ME_EXPECTED, ME_CUTTED, ME_HOMO]
+
+    for (Vl, D, ϵ, τ) in EXP_PARAMS
+        MINDEX[:STATUS, Vl, D, ϵ, τ] != :stst && continue
+        ps = Plots.Plot[]
+        sparams =(;ylim = [0.0, Inf], lw = 3)
+        gparams = (;grid = false)
+        for rxn in ["gt", "vatp", "resp", "lt", "ldh"]
+            p = plot(;title = rxn, xlabel = "flx", ylabel = "prob", gparams...)
+            for  MODsym in MODELS
+                plot_marginals!(p, MODsym, rxn, Vl, D, ϵ, τ; sparams...)
+            end
+            push!(ps, p)
+        end
+
+        p = plot(;title = "dynamic", xlabel = "", ylabel = "conc", gparams...)        
+        M = idxdat([ME_EXPECTED, :M], Vl, D, ϵ, τ) 
+        bar!(p, ["sg", "sl"], [M.sg, M.sl]; label = "")
+        push!(ps, p)
+        mysavefig(ps, "Marginals_v2"; Vl, D, ϵ)
+    end
+end
+
+## ----------------------------------------------------------------------------
+# Dev
+let
+    # Vl, D, ϵ, τ = EXP_PARAMS |> collect |> rand
+    Vl, D, ϵ, τ = (0.0, 0.003, 0.01, 0.0)
+    status = MINDEX[:STATUS, Vl, D, ϵ, τ]
+    
+    DyMs = idxdat([:DyMs], Vl, D, ϵ, τ)
+    
+    MODsym = ME_CUTTED
+    M = idxdat([MODsym, :M], Vl, D, ϵ, τ) 
+    MEM2s = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
+    net = M.net
+    net.ub[7] = 0.0
+    L, U = InLP.fva(M.net)
+    net.lb .= L; net.ub .= U
+
+    δ = 0.08
+    y = InLP.Y # atp/biomass yield
+    maxentf(beta) = (vatp, vg) -> exp(beta * vatp/y)
+    MEMs = InLP.get_marginals(maxentf(0.0), M; δ)
+    
+    for (rxni, rxn) in net.rxns |> enumerate
+        DYav = InLP.av(DyMs[rxn])
+        MEav = InLP.av(MEMs[rxn])
+        ME2av = InLP.av(MEM2s[rxn])
+        @info(rxn, (Vl, D, ϵ, τ), status, DYav, MEav, ME2av, net.lb[rxni], net.ub[rxni])
+        println()
+    end
+end
 
 ## ----------------------------------------------------------------------------
 # let
@@ -234,11 +288,11 @@ end
 #     D = (MINDEX[:Ds] |> sort)[6]
 #     ϵ = MINDEX[:ϵs][2]
 #     MODsym = FBA_BOUNDED   
-#     M = idxdat([MODsym, DYN_POL, :Ms], Vl, D, ϵ, τ)
+#     M = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
 #     # @show MINDEX[:STATUS, Vl, D, ϵ, τ]
-#     # vatp_range, vg_ranges = idxdat([ME_EXPECTED, :STST_POL, :Ms], Vl, D, ϵ, τ)
+#     # vatp_range, vg_ranges = idxdat([ME_EXPECTED, :Ms], Vl, D, ϵ, τ)
 #     # dat = deserialize(MINDEX[:DFILE, Vl, D, ϵ, τ]);
-#     # dat[[ME_EXPECTED, :STST_POL, :POL]...] |> keys |> collect
+#     # dat[[ME_EXPECTED, :POL]...] |> keys |> collect
 # end
 
 ## ----------------------------------------------------------------------------
@@ -247,13 +301,12 @@ let
 
     Vl = MINDEX[:Vls] |> first
     τ = MINDEX[:τs] |> first
-    D = (MINDEX[:Ds] |> sort)[9]
+    D = (MINDEX[:Ds] |> sort)[5]
     ϵs = MINDEX[:ϵs] |> sort
-    sparams =(;alpha = 0.5, lw = 10, ylim = [0.0, Inf])
+    sparams =(;alpha = 0.8, lw = 10, ylim = [0.0, Inf])
     gparams = (;grid = false)
     
-    MODELS = [ME_BOUNDED, ME_EXPECTED, ME_HOMO, FBA_BOUNDED, FBA_OPEN]
-
+    MODELS = [ME_BOUNDED, ME_EXPECTED, ME_CUTTED, ME_HOMO, FBA_BOUNDED, FBA_OPEN]
     ps = Plots.Plot[]
     for ϵ in ϵs
         for rxn in ["gt", "vatp"]
@@ -265,13 +318,13 @@ let
             )
             
             @time begin
-                plot_marginals!(p, MODELS, POLTsym, rxn, Vl, D, ϵ, τ; sparams...)
+                plot_marginals!(p, MODELS, rxn, Vl, D, ϵ, τ; sparams...)
             end
             push!(ps, p)
         end
     end
     layout = 4, 2
-    mysavefig(ps, "dyn_vs_model_marginals"; layout, Vl, D, τ, POLTsym)
+    mysavefig(ps, "dyn_vs_model_marginals"; layout, Vl, D, τ)
 end
 
 ## ----------------------------------------------------------------------------
@@ -288,49 +341,13 @@ let
         beta_ser = []
         for ϵ in ϵs
             MINDEX[:STATUS, Vl, D, ϵ, τ] != :stst && continue
-            beta = idxdat([:ME_EXPECTED, POLTsym, :beta0], Vl, D, ϵ, τ)
+            beta = idxdat([:ME_EXPECTED, :beta0], Vl, D, ϵ, τ)
             push!(ϵ_ser, ϵ)
             push!(beta_ser, beta)
         end
         scatter!(p, beta_ser, ϵ_ser; label = "", color = colors[D], sparams...)
     end
     mysavefig(p, "$(ME_EXPECTED)_beta_vs_eps_D_colored")
-end
-
-## ----------------------------------------------------------------------------
-# Bound Correlation
-let
-    f(x) = x
-    p = plot(;title = "Exchs Bounds Correlation", 
-        xlabel = "dym bound", ylabel = "stst bound")
-    l, u = Inf, -Inf
-
-    STST_vgubs, DYN_vgubs = [], []
-    STST_vlubs, DYN_vlubs = [], []
-    for (Vl, D, ϵ, τ) in EXP_PARAMS
-        MINDEX[:STATUS, Vl, D, ϵ, τ] != :stst && continue
-
-        for  MODsym in [ME_BOUNDED, ME_EXPECTED, ME_HOMO]
-            M = idxdat([MODsym, STST_POL, :M], Vl, D, ϵ, τ)
-            push!(STST_vgubs, M.net.ub[M.vg_idx])
-            push!(STST_vlubs, M.net.ub[M.vl_idx])
-
-            M = idxdat([MODsym, DYN_POL, :M], Vl, D, ϵ, τ)
-            push!(DYN_vgubs, M.net.ub[M.vg_idx])
-            push!(DYN_vlubs, M.net.ub[M.vl_idx])
-        end
-    end
-
-    xs = [DYN_vgubs; DYN_vlubs]
-    ys = [STST_vgubs; STST_vlubs]
-    l = minimum([l; xs; ys])            
-    u = maximum([u; xs; ys])            
-    plot!(p, f.([l, u]), f.([l, u]); label = "", ls = :dash, alpha = 0.8)
-    scatter!(p, f.(xs), f.(ys); alpha = 0.5, color = :black, label = "")
-
-    # saving
-    mysavefig(p, "exchs_bounds_corr")
-
 end
 
 ## ----------------------------------------------------------------------------
@@ -358,31 +375,44 @@ let
     mysavefig(p, "mu_vs_eps") 
 end
 
-# ## ----------------------------------------------------------------------------
-# # eps vs vg
-# let
-#     Ds = MINDEX[:Ds] |> sort
-#     ϵs = MINDEX[:ϵs] |> sort
-#     τ = MINDEX[:τs] |> first
-#     Vl = MINDEX[:Vls] |> first
+## ----------------------------------------------------------------------------
+# vatp corrs
+let
+    Ds = MINDEX[:Ds] |> sort
+    ϵs = MINDEX[:ϵs] |> sort
+    τ = MINDEX[:τs] |> first
+    Vl = MINDEX[:Vls] |> first
 
-#     p = plot(;title = "dynamic stst", xlabel = "ϵ", ylabel = "vg")
-#     for D in Ds
-#         @info("Doing", D)
-#         xs, ys = [], []
-#         for ϵ in ϵs
-#             MINDEX[:STATUS, Vl, D, ϵ, τ] != :stst && continue
-#             DyMs = idxdat([:DyMs], Vl, D, ϵ, τ)
-            
-#             av = InLP.av(DyMs["gt"])
-#             push!(xs, ϵ) 
-#             push!(ys, av) 
-#         end
-#         plot!(p, xs, ys; label = "", alpha = 0.5, lw = 3)
-#     end
-#     mysavefig(p, "eps_vs_vg") 
-# end
+    MODELS = [ME_BOUNDED, ME_EXPECTED, ME_CUTTED, ME_HOMO, FBA_BOUNDED, FBA_OPEN]
 
+    for flx in ["vatp", "gt"]
+        ps = Dict(
+            MODsym => plot(;title = string("dynamic stst: ", MODsym), 
+                xlabel = "dyn $flx", ylabel = "model $flx"
+            ) 
+            for MODsym in MODELS
+        )
+        for ϵ in ϵs
+            @info("Doing", ϵ)
+            for D in Ds
+                MINDEX[:STATUS, Vl, D, ϵ, τ] != :stst && continue
+                DyMs = idxdat([:DyMs], Vl, D, ϵ, τ)
+                dym_vatp = InLP.av(DyMs[flx])
+                
+                for MODsym in MODELS
+                    Ms = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
+                    m_vatp = InLP.av(Ms[flx])
+                    color = MOD_COLORS[MODsym]
+                    scatter!(ps[MODsym], [dym_vatp], [m_vatp]; color, 
+                        label = "", alpha = 0.5, m = 8
+                    )
+                end
+            end
+        end
+        ps = collect(values(ps))
+        mysavefig(ps, "$(flx)_correlation") 
+    end
+end
 
 ## ----------------------------------------------------------------------------
 # Steady State Model Dynamic correlation
@@ -393,7 +423,7 @@ let
     ϵs = MINDEX[:ϵs]
     sim_params = Iterators.product(MINDEX[[:Vls, :Ds, :τs]]...)
     sim_params = collect(sim_params)[1:5:end]
-    models = [ME_BOUNDED, ME_EXPECTED, ME_HOMO, FBA_BOUNDED, FBA_OPEN]
+    models = [ME_BOUNDED, ME_EXPECTED, ME_CUTTED, ME_HOMO, FBA_BOUNDED, FBA_OPEN]
     
     ps = Plots.Plot[]
     for ϵ in ϵs |> sort
@@ -410,12 +440,12 @@ let
             DYN_flxs, DYN_errs = arr, copy(arr)
             M_flxs, M_errs = copy(arr), copy(arr)
             
-            @info("Doing", ϵ, MODsym, STST_POL)
+            @info("Doing", ϵ, MODsym)
             
             for (i, (Vl, D, τ)) in sim_params |> enumerate
                 MINDEX[:STATUS, Vl, D, ϵ, τ] != :stst && continue
                 DyMs = idxdat([:DyMs], Vl, D, ϵ, τ)
-                Ms = idxdat([MODsym, STST_POL, :Ms], Vl, D, ϵ, τ)
+                Ms = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
                 
                 for rxn in InLP.RXNS
                     DYN_flx = InLP.av(DyMs[rxn])

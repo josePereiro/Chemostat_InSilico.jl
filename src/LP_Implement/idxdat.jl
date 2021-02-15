@@ -5,11 +5,13 @@ function idxdat(INDEX, dk::Vector, indexks...; cache = true)
     if FILE isa ITERABLE
         dat = []
         for F in FILE
+            F = joinpath(InCh.PROJECT_DIR, F)
             datum = deserialize(F)[dk...]
             push!(dat, datum)
         end
         return dat
     else
+        FILE = joinpath(InCh.PROJECT_DIR, FILE)
         iscached = cache && FILE == get(IDXDAT_CACHE, :FCACHED, nothing)
         return iscached ?
             IDXDAT_CACHE[:DATCACHED][dk...] :
