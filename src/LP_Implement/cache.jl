@@ -5,7 +5,7 @@ _vgvatp_cache_file(M::SimModel, marginf) = joinpath(CACHE_DIR,
 
 ## ---------------------------------------------------------  
 # TODO: Runge-Kutta damping
-function vgvatp_cache(M::SimModel; marginf::Float64 = 1.5, 
+function vgvatp_cache(M::SimModel; marginf::Float64 = 0.1, 
         up_frec = 10)::Dict{Float64, Dict{Float64, Vector{Float64}}}
 
     # check cache
@@ -14,8 +14,9 @@ function vgvatp_cache(M::SimModel; marginf::Float64 = 1.5,
     
     # setup
     M = deepcopy(M)
-    M.net.ub .*= marginf
-    M.net.lb .*= marginf
+    Δb = abs.(M.net.ub .- M.net.lb)
+    M.net.ub .+= Δb .* marginf
+    M.net.lb .-= Δb .* marginf
 
     # threading
     nth = nthreads()
