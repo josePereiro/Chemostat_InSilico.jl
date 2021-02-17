@@ -1,5 +1,6 @@
-import DrWatson: quickactivate
-quickactivate(@__DIR__, "Chemostat_InSilico")
+import DrWatson
+const DW = DrWatson
+DW.quickactivate(@__DIR__, "Chemostat_InSilico")
 
 @time begin
 
@@ -15,7 +16,11 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
     using Serialization
     using Dates
 
+    import UtilsJL
+    const UJL = UtilsJL
+    import FileIO
 end
+
 
 ## -----------------------------------------------------------------------------------------------
 # Plot progress coroutine
@@ -24,6 +29,24 @@ const DATA_FILE_PREFFIX = "dyn_dat"
 const PROG_FIG_DIR = joinpath(InCh.DYN_FIGURES_DIR, "progress")
 
 ## -----------------------------------------------------------------------------------------------
+# Compat
+# Fix fignames
+let
+    dir = PROG_FIG_DIR
+    for figname in readdir(dir)
+        fixname = replace(figname, "_tslen_" => "_tslen=")
+        fixname == figname && continue
+        mv(
+            joinpath(dir, figname), 
+            joinpath(dir, fixname);
+            force = true
+        )
+        @show fixname
+    end
+end
+
+## -----------------------------------------------------------------------------------------------
+# Progress plots
 while true
     @info("Scanning ", DATA_DIR, now()); println()
 
@@ -43,7 +66,8 @@ while true
         if !isfile(curr_figfile) || mtime(datfile) > mtime(curr_figfile)
             try
                 status, TS, M = deserialize(datfile)
-                hist_fname = string(string(fname, "_tslen_",length(TS)), ".png")
+                # TODO handle naming with DW
+                hist_fname = string(string(fname, "_tslen=",length(TS)), ".png")
                 hist_figfile = joinpath(PROG_FIG_DIR, hist_fname)
 
                 @info("Updating progress", fname, now()); println()
@@ -51,6 +75,7 @@ while true
                 p = InLP.plot_res(M, TS)
                 savefig(p, curr_figfile)
                 savefig(p, hist_figfile)
+
             catch err
                 @warn("ERROR", err); println()
             end

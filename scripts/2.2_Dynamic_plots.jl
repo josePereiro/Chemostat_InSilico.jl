@@ -312,6 +312,13 @@ let
 end
 
 ## ----------------------------------------------------------------------------
+# Progress gifs
+let
+    PROG_FIG_DIR = joinpath(InCh.DYN_FIGURES_DIR, "progress")
+    UJL.make_group_gif("tslen", PROG_FIG_DIR)
+end
+
+## ----------------------------------------------------------------------------
 # # polytope_ϵ_animation
 # let
 #     Ds = DAT[:Ds]
