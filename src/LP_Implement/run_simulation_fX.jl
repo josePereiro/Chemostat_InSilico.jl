@@ -4,7 +4,7 @@ function run_simulation_fX!(M::SimModel;
         verbose = true,
         verbose_frec = 10,
         LP_cache = nothing,
-        cache_marginf::Float64 = 1.5
+        cache_marginf::Float64 = 0.1
     )
 
     # LP_cache

@@ -35,7 +35,8 @@ Base.last(v::Vector, i) = v[max(firstindex(v), length(v) - i + 1):lastindex(v)]
 # Load DAT
 # INDEX[:DFILE, Vl, D, ϵ, τ]
 INDEX = UJL.load_data(InCh.DYN_DATA_INDEX_FILE)
-idxdat(dk, indexks...) = InLP.idxdat(INDEX, dk, indexks...)
+idxdat(dk, indexks...; cache = true) = InLP.idxdat(INDEX, dk, indexks...; cache)
+EXP_PARAMS = Iterators.product(INDEX[[:Vls, :Ds, :ϵs, :τs]]...)
 
 ## ----------------------------------------------------------------------------
 # let
@@ -60,64 +61,64 @@ mysavefig(p, pname; params...) =
     InLP.mysavefig(p, pname, InLP.DYN_FIGURES_DIR, fileid; params...)
 
 ## ----------------------------------------------------------------------------
-# Separated Polytopes
-let
-    Vl = INDEX[:Vls] |> first
-    τ =  INDEX[:τs] |> first
-    Ds =  INDEX[:Ds][1:3:end][1:4]
-    ϵs = INDEX[:ϵs]
+# # Separated Polytopes
+# let
+#     Vl = INDEX[:Vls] |> first
+#     τ =  INDEX[:τs] |> first
+#     Ds =  INDEX[:Ds][1:3:end][1:4]
+#     ϵs = INDEX[:ϵs]
 
-    ps = Plots.Plot[]
+#     ps = Plots.Plot[]
 
-    # Find bigger polytope
-    G = (;vgU = -Inf)
-    for ϵ in ϵs, D in Ds
-        M = idxdat([:M], Vl, D, ϵ, τ)
-        status = idxdat([:status], Vl, D, ϵ, τ)
-        status != :stst && continue
-        vatpL, vatpU, vgL, vgU = InLP.pol_box(M)
-        G.vgU < vgU && (G = (;D, vgU, vatpU))
-    end
+#     # Find bigger polytope
+#     G = (;vgU = -Inf)
+#     for ϵ in ϵs, D in Ds
+#         status = idxdat([:status], Vl, D, ϵ, τ)
+#         status != :stst && continue
+#         M = idxdat([:M], Vl, D, ϵ, τ)
+#         vatpL, vatpU, vgL, vgU = InLP.pol_box(M)
+#         G.vgU < vgU && (G = (;D, vgU, vatpU))
+#     end
 
-    for ϵ in ϵs, D in Ds
-        M = idxdat([:M], Vl, D, ϵ, τ)
-        status = idxdat([:status], Vl, D, ϵ, τ)
-        status != :stst && continue
+#     for ϵ in ϵs, D in Ds
+#         M = idxdat([:M], Vl, D, ϵ, τ)
+#         status = idxdat([:status], Vl, D, ϵ, τ)
+#         status != :stst && continue
 
-        @info("Doing",(Vl, D, ϵ, τ)); println()
-        p = plot(;title = "polytope, D = $(UJL.sci(D)), ϵ = $(UJL.sci(ϵ))", 
-            xlabel = "vatp", ylabel = "vg"
-        )
-        skwargs = (;color = :blue, alpha = 0.3, 
-            xlim = [-G.vatpU * 0.1, G.vatpU * 1.1],
-            ylim = [-G.vgU * 0.1, G.vgU * 1.1], 
-        )
-        InLP.plot_polborder!(p, M)
-        hits_count = Int(1e3)
-        InLP.plot_poldist!(p, M; rand_th = 1.0, static_th = 0.05, 
-            hits_count, skwargs, 
-        )
+#         @info("Doing",(Vl, D, ϵ, τ)); println()
+#         p = plot(;title = "polytope, D = $(UJL.sci(D)), ϵ = $(UJL.sci(ϵ))", 
+#             xlabel = "vatp", ylabel = "vg"
+#         )
+#         skwargs = (;color = :blue, alpha = 0.3, 
+#             xlim = [-G.vatpU * 0.1, G.vatpU * 1.1],
+#             ylim = [-G.vgU * 0.1, G.vgU * 1.1], 
+#         )
+#         InLP.plot_polborder!(p, M)
+#         hits_count = Int(1e3)
+#         InLP.plot_poldist!(p, M; rand_th = 1.0, static_th = 0.05, 
+#             hits_count, skwargs, 
+#         )
 
-        # Dynamic marginal
-        δ = 0.08
-        LP_cache = InLP.vgvatp_cache(M; marginf = 1.5)
-        f(vatp, vg) = M.Xb[vatp][vg] / M.X
-        DyMs = InLP.get_marginals(f, M; δ, LP_cache, verbose = false)
-        vatp_av = InLP.av(DyMs["vatp"]) 
-        vg_av = InLP.av(DyMs["gt"]) 
+#         # Dynamic marginal
+#         δ = 0.08
+#         LP_cache = InLP.vgvatp_cache(M; marginf = 1.5)
+#         f(vatp, vg) = M.Xb[vatp][vg] / M.X
+#         DyMs = InLP.get_marginals(f, M; δ, LP_cache, verbose = false)
+#         vatp_av = InLP.av(DyMs["vatp"]) 
+#         vg_av = InLP.av(DyMs["gt"]) 
 
-        kwargs = (;alpha = 0.5, label = "", color = :black)
-        hline!(p, [vg_av]; lw = 5, ls = :dash, kwargs...)
-        vline!(p, [vatp_av]; lw = 5, ls = :dash, kwargs...)
-        # scatter!(p, [vatp_av], [vg_av]; ms = 8, kwargs...)
+#         kwargs = (;alpha = 0.5, label = "", color = :black)
+#         hline!(p, [vg_av]; lw = 5, ls = :dash, kwargs...)
+#         vline!(p, [vatp_av]; lw = 5, ls = :dash, kwargs...)
+#         # scatter!(p, [vatp_av], [vg_av]; ms = 8, kwargs...)
 
-        push!(ps, p)
-    end
-    layout = length(ϵs), length(Ds)
-    mysavefig(ps, "separated_polytopes"; layout)
-    @warn "Exiting"
-    exit()
-end
+#         push!(ps, p)
+#     end
+#     layout = length(ϵs), length(Ds)
+#     mysavefig(ps, "separated_polytopes"; layout)
+#     @warn "Exiting"
+#     exit()
+# end
 
 ## ----------------------------------------------------------------------------
 # # Overlaped Polytopes
@@ -204,28 +205,30 @@ let
     mysavefig(p, "ϵ_legend")
 end
 
-## ----------------------------------------------------------------------------
-# Steady state_vs_D Dynamic
-let
-    f = identity
-    Ds = INDEX[:Ds]
+# ## ----------------------------------------------------------------------------
+# # Steady state_vs_D Dynamic
+# let
+#     f = identity
+#     Ds = INDEX[:Ds]
 
-    for Vl in INDEX[:Vls], τ in INDEX[:τs]
-        for field in [:X, :sg, :sl]
-            ylabel = field
-            p = plot(;xlabel = "D", ylabel, title = "Steady State")
-            for ϵ in INDEX[:ϵs] |> reverse
-                Xs = getfield.(idxdat([:M], Vl, Ds, ϵ, τ), field) 
-                plot!(p, Ds, f.(Xs .+ 1e-8); 
-                    label = "", lw = 4, alpha = 0.7, color = Gray(ϵ * 0.8)
-                )
-            end
+#     for Vl in INDEX[:Vls], τ in INDEX[:τs]
+#         for field in [:X, :sg, :sl]
+#             ylabel = field
+#             p = plot(;xlabel = "D", ylabel, title = "Steady State")
+#             for ϵ in INDEX[:ϵs] |> reverse
+#                 status = idxdat([:status], Vl, D, ϵ, τ)
+#                 (status != :stst || status != :death) && continue
+#                 Xs = getfield.(idxdat([:M], Vl, Ds, ϵ, τ), field) 
+#                 plot!(p, Ds, f.(Xs .+ 1e-8); 
+#                     label = "", lw = 4, alpha = 0.7, color = Gray(ϵ * 0.8)
+#                 )
+#             end
 
-            # saving
-            mysavefig(p, "$(ylabel)_vs_D_vs_ϵ"; Vl, τ)
-        end
-    end
-end
+#             # saving
+#             mysavefig(p, "$(ylabel)_vs_D_vs_ϵ"; Vl, τ)
+#         end
+#     end
+# end
 
 ## ----------------------------------------------------------------------------
 # sg vs eps
@@ -264,14 +267,17 @@ let
     Vl = INDEX[:Vls] |> first
     τ =  INDEX[:τs] |> first
     
-    write_lock = ReentrantLock()
     vg_plots = Vector{Plots.Plot}(undef, length(Ds))
     vatp_plots = Vector{Plots.Plot}(undef, length(Ds))
 
     @time for (Di, D) in Ds |> enumerate 
 
-        vatp_plot = plot(xlabel = "vatp", ylabel = "pdf", title = string("D: ", UJL.sci(D)))
-        vg_plot = plot(xlabel = "vg", ylabel = "pdf", title = string("D: ", UJL.sci(D)))
+        vatp_plot = plot(;title = string("D: ", UJL.sci(D)), 
+            xlabel = "vatp", ylabel = "pdf"
+        )
+        vg_plot = plot(;title = string("D: ", UJL.sci(D)), 
+            xlabel = "vg", ylabel = "pdf"
+        )
 
         for ϵ in INDEX[:ϵs] |> sort |> reverse
             M = idxdat([:M], Vl, D, ϵ, τ)
@@ -281,14 +287,16 @@ let
             status != :stst && continue
 
             # Dynamic marginal
-            LP_cache = InLP.vgvatp_cache(M; marginf = 1.5)
+            LP_cache = InLP.vgvatp_cache(M)
             f(vatp, vg) = M.Xb[vatp][vg] / M.X
             DyMs = InLP.get_marginals(f, M; δ, LP_cache, verbose = false)
             vatp_av = InLP.av(DyMs["vatp"]) 
             vg_av = InLP.av(DyMs["gt"]) 
 
             # marginals
-            lparams = (;label = ϵ, lw = 4, alpha = 0.7, color =  Gray(ϵ * 0.8), legend = false)
+            lparams = (;label = ϵ, lw = 4, alpha = 0.7, 
+                color =  Gray(ϵ * 0.8), legend = false
+            )
             plot!(vatp_plot, DyMs["vatp"]; lparams...)
             vline!(vatp_plot, [vatp_av]; ls = :dash, lparams...)
             plot!(vg_plot, DyMs["gt"]; lparams...)

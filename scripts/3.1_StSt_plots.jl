@@ -27,6 +27,7 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
     using FileIO
 
 end
+
 ## ----------------------------------------------------------------------------
 # Meta
 fileid = "2.2"
@@ -198,7 +199,7 @@ end
 # all Marginals
 let
     # MODELS = [ME_BOUNDED, ME_EXPECTED, ME_HOMO, FBA_BOUNDED, FBA_OPEN]
-    MODELS = [ME_EXPECTED, ME_HOMO]
+    MODELS = [ME_EXPECTED, ME_CUTTED, ME_HOMO, FBA_BOUNDED]
 
     for (Vl, D, ϵ, τ) in EXP_PARAMS
         MINDEX[:STATUS, Vl, D, ϵ, τ] != :stst && continue
@@ -250,36 +251,36 @@ let
     end
 end
 
-## ----------------------------------------------------------------------------
-# Dev
-let
-    # Vl, D, ϵ, τ = EXP_PARAMS |> collect |> rand
-    Vl, D, ϵ, τ = (0.0, 0.003, 0.01, 0.0)
-    status = MINDEX[:STATUS, Vl, D, ϵ, τ]
+# ## ----------------------------------------------------------------------------
+# # Dev
+# let
+#     # Vl, D, ϵ, τ = EXP_PARAMS |> collect |> rand
+#     Vl, D, ϵ, τ = (0.0, 0.003, 0.01, 0.0)
+#     status = MINDEX[:STATUS, Vl, D, ϵ, τ]
     
-    DyMs = idxdat([:DyMs], Vl, D, ϵ, τ)
+#     DyMs = idxdat([:DyMs], Vl, D, ϵ, τ)
     
-    MODsym = ME_CUTTED
-    M = idxdat([MODsym, :M], Vl, D, ϵ, τ) 
-    MEM2s = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
-    net = M.net
-    net.ub[7] = 0.0
-    L, U = InLP.fva(M.net)
-    net.lb .= L; net.ub .= U
+#     MODsym = ME_CUTTED
+#     M = idxdat([MODsym, :M], Vl, D, ϵ, τ) 
+#     MEM2s = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
+#     net = M.net
+#     net.ub[7] = 0.0
+#     L, U = InLP.fva(M.net)
+#     net.lb .= L; net.ub .= U
 
-    δ = 0.08
-    y = InLP.Y # atp/biomass yield
-    maxentf(beta) = (vatp, vg) -> exp(beta * vatp/y)
-    MEMs = InLP.get_marginals(maxentf(0.0), M; δ)
+#     δ = 0.08
+#     y = InLP.Y # atp/biomass yield
+#     maxentf(beta) = (vatp, vg) -> exp(beta * vatp/y)
+#     MEMs = InLP.get_marginals(maxentf(0.0), M; δ)
     
-    for (rxni, rxn) in net.rxns |> enumerate
-        DYav = InLP.av(DyMs[rxn])
-        MEav = InLP.av(MEMs[rxn])
-        ME2av = InLP.av(MEM2s[rxn])
-        @info(rxn, (Vl, D, ϵ, τ), status, DYav, MEav, ME2av, net.lb[rxni], net.ub[rxni])
-        println()
-    end
-end
+#     for (rxni, rxn) in net.rxns |> enumerate
+#         DYav = InLP.av(DyMs[rxn])
+#         MEav = InLP.av(MEMs[rxn])
+#         ME2av = InLP.av(MEM2s[rxn])
+#         @info(rxn, (Vl, D, ϵ, τ), status, DYav, MEav, ME2av, net.lb[rxni], net.ub[rxni])
+#         println()
+#     end
+# end
 
 ## ----------------------------------------------------------------------------
 # let
@@ -376,7 +377,7 @@ let
 end
 
 ## ----------------------------------------------------------------------------
-# vatp corrs
+# flx corrs
 let
     Ds = MINDEX[:Ds] |> sort
     ϵs = MINDEX[:ϵs] |> sort
@@ -477,4 +478,89 @@ let
     cols = length(models)
     layout = rows, cols
     mysavefig(ps, "flxs_corr"; layout) 
+end
+
+## ----------------------------------------------------------------------------
+# Check dyn constraints
+let
+    WLOCK = ReentrantLock()
+
+    biom_prods, bioms_drains = [], []
+    glc_ins, glc_ups, glc_drains = [], [], []
+    # Vls, Ds, ϵs, τs = [], [], [], []
+    # LP_cache = nothing
+    @time @threads for (Vl, D, ϵ, τ) in collect(EXP_PARAMS)
+        
+        status = nothing
+        DyMs, M = nothing, nothing
+        lock(WLOCK) do
+            status = MINDEX[:STATUS, Vl, D, ϵ, τ]
+            DyMs = idxdat([:DyMs], Vl, D, ϵ, τ)
+            M = idxdat([:M0], Vl, D, ϵ, τ)
+                
+            # isnothing(LP_cache) && (LP_cache = InLP.vgvatp_cache(M))
+            @info("Doing", (Vl, D, ϵ, τ), status)
+            println()
+        end
+        status != :stst && continue
+        
+        f(vatp, vg) = M.Xb[vatp][vg] / M.X
+        av_z = InLP.av(DyMs["biom"])
+        μ = av_z - M.σ
+        growth_bal = (μ - D)/D
+        biom_prod = μ * M.X
+        bioms_drain = D * M.X
+
+        av_vg = InLP.av(DyMs["gt"])
+        cD_X = M.cg * M.D / M.X
+        glc_bal = (-av_vg * M.X + (M.cg - M.sg) * M.D) / (M.cg * M.D)
+        glc_in = M.cg * M.D
+        glc_drain = M.sg * M.D
+        glc_up = av_vg * M.X
+        
+        
+        lock(WLOCK) do
+            @info("Growth", av_z, μ, M.σ, D, growth_bal)
+            @info("GLC uptake", av_vg, cD_X, M.sg, glc_bal)
+            println()
+
+            push!(biom_prods, biom_prod)
+            push!(bioms_drains, bioms_drain)
+            push!(glc_ins, glc_in)
+            push!(glc_drains, glc_drain)
+            push!(glc_ups, glc_up)
+        end
+    end
+
+    biom_bal_p = plot(;title = "Biomass balance", 
+        xlabel = "simulation", ylabel = "rate"
+    )
+    plot!(biom_bal_p, biom_prods; label = "prods", lw = 3)
+    plot!(biom_bal_p, bioms_drains; label = "drains", lw = 3)
+
+    biom_corr_p = plot(title = "Biomass balance correlation", 
+       xlabel = "production", ylabel = "drain"
+    )
+    scatter!(biom_corr_p, biom_prods, bioms_drains; label = "", m = 8)
+    vals = sort([biom_prods; bioms_drains])
+    plot!(biom_corr_p, vals, vals; label = "", color = :black, ls = :dash, alpha = 0.7)
+    
+    glc_bal_p = plot(;title = "Glc balance", 
+        xlabel = "simulation", ylabel = "rate"
+    )
+    plot!(glc_bal_p, glc_ins; label = "input", lw = 3)
+    plot!(glc_bal_p, glc_ups; label = "uptake", lw = 3)
+    plot!(glc_bal_p, glc_drains; label = "drain", lw = 3)
+    plot!(glc_bal_p, glc_drains .+ glc_ups; label = "up + drain", lw = 3)
+
+    glc_corr_b = plot(title = "Glc balance correlation", 
+        xlabel = "production", ylabel = "up + drain"
+    )
+    scatter!(glc_corr_b,  glc_ins, glc_drains .+ glc_ups; label = "", m = 8)
+    vals = sort([glc_ins; glc_drains .+ glc_ups])
+    plot!(glc_corr_b, vals, vals; label = "", color = :black, ls = :dash, alpha = 0.7)
+
+    ps = Plots.Plot[biom_bal_p, biom_corr_p, glc_bal_p, glc_corr_b]
+    mysavefig(ps, "dyn_balances")
+
 end

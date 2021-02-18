@@ -45,7 +45,7 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, DyBiom, verbose = true)
     y = InLP.Y # atp/biomass yield
     maxentf(beta) = (vatp, vg) -> exp(beta * vatp/y)
     
-    M.net.ub[7] = 0.0 # ATPM PROBLEM Delete
+    # M.net.ub[7] = 0.0 # ATPM PROBLEM Delete
 
     if MEmode == ME_CUTTED
         # Fix av_ug
@@ -107,7 +107,7 @@ end
 ## ----------------------------------------------------------------------------
 function run_FBA!(M, FBAmode; LP_cache, δ, δμ, DyBiom, verbose = true)
 
-    M.net.ub[7] = 0.0 # ATPM PROBLEM Delete
+    # M.net.ub[7] = 0.0 # ATPM PROBLEM Delete
 
     if FBAmode == FBA_BOUNDED
         # Fix biomass to observable
@@ -176,6 +176,25 @@ end
 REDO_MAXENT = false
 REDO_FBA = false
 
+# ## ----------------------------------------------------------------------------
+# # Compat
+# let
+#     δ = 0.08 # marginal discretization factor
+#     δμ = 0.01 # ME_BOUNDED biomass variance
+#     Vls, Ds, ϵs, τs = DINDEX[[:Vls, :Ds, :ϵs, :τs]]
+#     params = Iterators.product(Vls, Ds, ϵs, τs)
+#     for (Vl, D, ϵ, τ) in params
+#         cfile = dat_file(;Vl, D, ϵ, τ, δ, δμ)
+#         if isfile(cfile) # Check caches
+#             @info("Doing", cfile)
+#             MDAT = deserialize(cfile)
+#             MDAT[:M0] = idxdat([:M], Vl, D, ϵ, τ)
+#             serialize(cfile, MDAT)
+#         end
+#     end
+
+# end
+
 ## ----------------------------------------------------------------------------
 # COMPUTE MARGINALS
 INDEX = UJL.DictTree() # marginals dat
@@ -203,19 +222,19 @@ let
             
             ## ----------------------------------------------------------------------------
             MDAT = UJL.DictTree()
-            M0 = idxdat([:M], Vl, D, ϵ, τ)
+            M0 = MDAT[:M0] = idxdat([:M], Vl, D, ϵ, τ)
             status = idxdat([:status], Vl, D, ϵ, τ)
             LP_cache = nothing
             
             c = nothing
             lock(WLOCK) do
                 gc += 1; c = gc
-                LP_cache = InLP.vgvatp_cache(M0; marginf = 1.5)
+                LP_cache = InLP.vgvatp_cache(M0)
                 push!(INDEX[:Vls], Vl); push!(INDEX[:Ds], D)
                 push!(INDEX[:ϵs], ϵ); push!(INDEX[:τs], τ)
                 INDEX[:DFILE, Vl, D, ϵ, τ] = relpath(cfile, InCh.PROJECT_DIR)
                 INDEX[:STATUS, Vl, D, ϵ, τ] = status
-                @info("Doing $c/$N ... ", 
+                @info("Doing $c, prog: $gc/$N ... ", 
                     (Vl, D, ϵ, τ), 
                     M0.X, status, 
                     thid
@@ -225,7 +244,7 @@ let
             ## ----------------------------------------------------------------------------
             if status != :stst # Only accept steady states
                 lock(WLOCK) do
-                    @info("Not a Stst (Skipping) $c/$N ... ",
+                    @info("Not a Stst (Skipping) $c, prog: $gc/$N ... ",
                         (Vl, D, ϵ, τ),
                         M0.X, status,
                         thid
@@ -239,7 +258,7 @@ let
                 if REDO_MAXENT || REDO_FBA
                     MDAT = deserialize(cfile)
                     lock(WLOCK) do
-                        @info("Cache found (Redoing) $c/$N ... ", 
+                        @info("Cache found (Redoing) $c, prog: $gc/$N ... ", 
                             (Vl, D, ϵ, τ), 
                             status, basename(cfile),
                             REDO_MAXENT, REDO_FBA,
@@ -248,7 +267,7 @@ let
                     end
                 else
                     lock(WLOCK) do
-                        @info("Cache found (Skipping) $c/$N ... ", 
+                        @info("Cache found (Skipping) $c, prog: $gc/$N ... ", 
                             (Vl, D, ϵ, τ), 
                             status, basename(cfile),
                             thid
@@ -289,7 +308,7 @@ let
                         MDAT[MEmode, :beta0] = beta0
                         MDAT[MEmode, :POL] = (;vatp_range, vg_ranges)
 
-                        @info("Done MaxEnt  $c/$N ... ",
+                        @info("Done MaxEnt  $c, prog: $gc/$N ... ",
                             MEmode,  
                             (Vl, D, ϵ, τ),
                             M0.X, DyBiom, MEBiom,
@@ -318,7 +337,7 @@ let
                         MDAT[FBAmode, :Ms] = FBAMs
                         MDAT[FBAmode, :POL] = (;vatp_range, vg_ranges)
 
-                        @info("Done FBA  $c/$N ... ",
+                        @info("Done FBA  $c, prog: $gc/$N ... ",
                         FBAmode,  
                             (Vl, D, ϵ, τ),
                             M0.X, DyBiom, FBABiom,
@@ -329,7 +348,7 @@ let
 
             ## ----------------------------------------------------------------------------
             lock(WLOCK) do
-                @info("Finished  $c/$N ... ",
+                @info("Finished  $c, prog: $gc/$N ... ",
                     (Vl, D, ϵ, τ),
                     M0.X, basename(cfile),
                     thid

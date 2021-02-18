@@ -27,23 +27,24 @@ end
 const DATA_DIR = InCh.DYN_DATA_DIR
 const DATA_FILE_PREFFIX = "dyn_dat"
 const PROG_FIG_DIR = joinpath(InCh.DYN_FIGURES_DIR, "progress")
+mkpath(PROG_FIG_DIR)
 
-## -----------------------------------------------------------------------------------------------
-# Compat
-# Fix fignames
-let
-    dir = PROG_FIG_DIR
-    for figname in readdir(dir)
-        fixname = replace(figname, "_tslen_" => "_tslen=")
-        fixname == figname && continue
-        mv(
-            joinpath(dir, figname), 
-            joinpath(dir, fixname);
-            force = true
-        )
-        @show fixname
-    end
-end
+# ## -----------------------------------------------------------------------------------------------
+# # Compat
+# # Fix fignames
+# let
+#     dir = PROG_FIG_DIR
+#     for figname in readdir(dir)
+#         fixname = replace(figname, "_tslen_" => "_tslen=")
+#         fixname == figname && continue
+#         mv(
+#             joinpath(dir, figname), 
+#             joinpath(dir, fixname);
+#             force = true
+#         )
+#         @show fixname
+#     end
+# end
 
 ## -----------------------------------------------------------------------------------------------
 # Progress plots

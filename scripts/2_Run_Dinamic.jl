@@ -39,7 +39,7 @@ function check_stst(ts; stst_window, stst_th)
     return true
 end
 
-# ----------------------------------------------------------------------------
+## ----------------------------------------------------------------------------
 # Simulation 
 INDEX = UJL.DictTree() # To Store relevant information
 @time let
@@ -51,11 +51,10 @@ INDEX = UJL.DictTree() # To Store relevant information
     M0 = INDEX[:M0] = InLP.SimModel(;
             δvatp = 2, 
             δvg = 3, 
-            niters = Int(5e4),
             X0 = 0.3,
             sg0 = 15.0,
             sl0 = 0.0,
-            Δt = 0.5,
+            Δt = 0.25,
         )
 
     @info "Starting simulation" nthreads() now()
@@ -65,6 +64,7 @@ INDEX = UJL.DictTree() # To Store relevant information
     LP_cache = InLP.vgvatp_cache(M0)
 
     # simulation params
+    maxiters = Int(3e4)
     stst_th = 0.05
     stst_window = 250
     check_stst_init = 2000
@@ -77,10 +77,10 @@ INDEX = UJL.DictTree() # To Store relevant information
     # Params
     # Vls = [0.0, 0.1]
     Vls = INDEX[:Vls] = [0.0]
-    Ds = INDEX[:Ds]= 0.003:0.001:0.05 |> collect
-    # Ds = INDEX[:Ds] = [1e-2]
-    # ϵs = INDEX[:ϵs] = [0.01, 0.1, 0.3, 0.5, 0.8, 1.0]
-    ϵs = INDEX[:ϵs] = [[0.001, 0.01]; 0.1:0.1:1.0]
+    Ds = INDEX[:Ds]= 0.003:0.003:0.05 |> collect
+    # Ds = INDEX[:Ds] = [0.005, 0.01, 0.015, 0.02, 0.03]
+    ϵs = INDEX[:ϵs] = [0.01, 0.1, 0.5, 1.0]
+    # ϵs = INDEX[:ϵs] = [[0.001, 0.01]; 0.1:0.1:1.0]
     # τs = [0.0, 0.0022]
     τs = INDEX[:τs] = [0.0]
     
@@ -130,11 +130,12 @@ INDEX = UJL.DictTree() # To Store relevant information
             else
                 # setup model
                 M = deepcopy(M0)
-                M.D, M.ϵ, M.Vl, M.τ = D, ϵ, Vl, τ
                 TS = InLP.ResTS()
                 tslen = length(TS.X_ts)
                 status = :running
             end
+            M.D, M.ϵ, M.Vl, M.τ = D, ϵ, Vl, τ
+            M.niters = maxiters
 
             function on_iter(it, _)
 
@@ -151,7 +152,7 @@ INDEX = UJL.DictTree() # To Store relevant information
                 death && (status = :death)
 
                 # simulation ends
-                sim_ends = it == M.niters
+                sim_ends = it >= M.niters
                 sim_ends && (status = :sim_ends)
 
                 # finish
@@ -183,7 +184,9 @@ INDEX = UJL.DictTree() # To Store relevant information
             end
             
             if status == :running 
+                M.niters = Int(36100)
                 InLP.run_simulation_fPx!(M; 
+                    it0 = tslen * push_frec,
                     on_iter, LP_cache, 
                     verbose = false
                 )
