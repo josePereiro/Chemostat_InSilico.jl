@@ -23,20 +23,26 @@ dat_file(;sim_params...) = joinpath(
     InCh.DYN_DATA_DIR, 
     InLP.mysavename(DATA_FILE_PREFFIX, "jls"; sim_params...)
 )
-idxdat(dk, indexks...) = InLP.idxdat(DINDEX, dk, indexks...)
+idxdat(dk, indexks...; cache = false, emptycache = true) = 
+    InLP.idxdat(DINDEX, dk, indexks...; cache, emptycache)
 
-
-## ----------------------------------------------------------------------------
-# Prepare network
+# ----------------------------------------------------------------------------
 const WLOCK = ReentrantLock()
 
-const ME_HOMO = :ME_HOMO           # Do not use extra constraints
-const ME_EXPECTED = :ME_EXPECTED   # Match ME and Dy biom average
-const ME_CUTTED = :ME_CUTTED     # Match ME and Dy biom average and constraint av_ug
-const ME_BOUNDED = :ME_BOUNDED     # Fix biom around observed
+# ----------------------------------------------------------------------------
+# METHOD VARIANTS
+const ME_Z_OPEN_G_OPEN        = :ME_Z_OPEN_G_OPEN           # Do not use extra constraints
+const ME_Z_OPEN_G_BOUNDED     = :ME_Z_OPEN_G_BOUNDED        # 
+const ME_Z_EXPECTED_G_OPEN    = :ME_Z_EXPECTED_G_OPEN       # Match ME and Dy biom average
+const ME_Z_EXPECTED_G_BOUNDED = :ME_Z_EXPECTED_G_BOUNDED    # Match ME and Dy biom average and constraint av_ug
+const ME_Z_FIXXED_G_OPEN      = :ME_Z_FIXXED_G_OPEN         # Fix biom around observed
+const ME_Z_FIXXED_G_BOUNDED   = :ME_Z_FIXXED_G_BOUNDED      # Fix biom around observed
 
-const FBA_OPEN = :FBA_OPEN
-const FBA_BOUNDED = :FBA_BOUNDED
+const FBA_Z_OPEN_G_OPEN       = :FBA_Z_OPEN_G_OPEN
+const FBA_Z_OPEN_G_BOUNDED    = :FBA_Z_OPEN_G_BOUNDED
+const FBA_Z_FIXXED_G_OPEN     = :FBA_Z_FIXXED_G_OPEN 
+const FBA_Z_FIXXED_G_BOUNDED  = :FBA_Z_FIXXED_G_BOUNDED
+
 
 ## ----------------------------------------------------------------------------
 function run_ME!(M, MEmode; LP_cache, δ, δμ, DyBiom, verbose = true)
@@ -44,10 +50,11 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, DyBiom, verbose = true)
     # MaxEnt fun
     y = InLP.Y # atp/biomass yield
     maxentf(beta) = (vatp, vg) -> exp(beta * vatp/y)
-    
-    # M.net.ub[7] = 0.0 # ATPM PROBLEM Delete
 
-    if MEmode == ME_CUTTED
+    # G BOUNDING
+    if MEmode == ME_Z_OPEN_G_BOUNDED ||
+            MEmode == ME_Z_EXPECTED_G_BOUNDED ||
+            MEmode == ME_Z_FIXXED_G_BOUNDED
         # Fix av_ug
         net = M.net
         net.ub[M.vg_idx] = min(M.Vg, M.cg * M.D/ M.X)
@@ -56,8 +63,10 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, DyBiom, verbose = true)
         net.lb .= L; net.ub .= U
     end
 
+    # Z EXPECTED
     beta0 = 0.0
-    if MEmode == ME_EXPECTED || MEmode == ME_CUTTED
+    if MEmode == ME_Z_EXPECTED_G_OPEN || 
+            MEmode == ME_Z_EXPECTED_G_BOUNDED
         # Gradient descent
         target = DyBiom
         x0 = 1.5e3
@@ -91,7 +100,9 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, DyBiom, verbose = true)
         end
     end
 
-    if MEmode == ME_BOUNDED
+    # Z FIXXED
+    if MEmode == ME_Z_FIXXED_G_OPEN || 
+            MEmode == ME_Z_FIXXED_G_BOUNDED
         # Fix biomass to observable
         net = M.net
         net.ub[M.obj_idx] = DyBiom * (1.0 + δμ)
@@ -107,9 +118,9 @@ end
 ## ----------------------------------------------------------------------------
 function run_FBA!(M, FBAmode; LP_cache, δ, δμ, DyBiom, verbose = true)
 
-    # M.net.ub[7] = 0.0 # ATPM PROBLEM Delete
-
-    if FBAmode == FBA_BOUNDED
+    # Z FIXXED
+    if FBAmode == FBA_Z_FIXXED_G_OPEN || 
+            FBAmode == FBA_Z_FIXXED_G_BOUNDED
         # Fix biomass to observable
         net = M.net
         net.ub[M.obj_idx] = DyBiom * (1.0 + δμ)
@@ -118,6 +129,18 @@ function run_FBA!(M, FBAmode; LP_cache, δ, δμ, DyBiom, verbose = true)
         net.lb .= L; net.ub .= U
     end
 
+    # G BOUNDING
+    if FBAmode == FBA_Z_OPEN_G_BOUNDED ||
+            FBAmode == FBA_Z_FIXXED_G_BOUNDED
+        # Fix av_ug
+        net = M.net
+        net.ub[M.vg_idx] = min(M.Vg, M.cg * M.D/ M.X)
+        net.ub[M.vl_idx] = min(M.Vl, M.cl * M.D/ M.X)
+        L, U = InLP.fva(M.net)
+        net.lb .= L; net.ub .= U
+    end
+
+    # FBA
     # Find maximum feasible vatp
     vatp_range, vg_ranges = InLP.vatpvg_ranges(M)
     max_vatp = -Inf
@@ -138,69 +161,17 @@ function run_FBA!(M, FBAmode; LP_cache, δ, δμ, DyBiom, verbose = true)
     return FBAMs
 end
 
-# ## ----------------------------------------------------------------------------
-# # Dev
-# let
-#     δ = 0.08
-#     δμ = 0.01
-#     Vl, D, ϵ, τ = 0.0, 0.036, 0.01, 0.0
-#     FBAmode = :FBA_OPEN
-#     POLTsym = :STST_POL
-#     M = idxdat([:M], Vl, D, ϵ, τ)
-#     prepare_pol!(M, POLTsym)
-
-#     LP_cache = InLP.vgvatp_cache(M; marginf = 1.5)
-#     # Dynamic marginal
-#     f(vatp, vg) = M.Xb[vatp][vg] / M.X
-#     DyMs = InLP.get_marginals(f, M; 
-#         δ, LP_cache, verbose = false)
-#     DyBiom = InLP.av(DyMs[InLP.BIOMASS_IDER]) # biomass dynamic mean
-#     # @show DyBiom
-    
-#     # fba_sol = InLP.fba(M.net)
-#     # vatp_fba = fba_sol[M.vatp_idx]
-#     # vg_fba = fba_sol[M.vg_idx]
-    
-#     # # Discretization RoundDown ensure the values are inside the polytope
-#     # vatp_fba = InLP.discretize(vatp_fba, M.δvatp; mode = RoundDown)
-#     # vg_fba = InLP.discretize(vg_fba, M.δvg; mode = RoundDown)
-#     # fbaf(vatp, vg) = (vatp == vatp_fba && vg == vg_fba) ? 1.0 : 0.0
-#     # FBAMs = InLP.get_marginals(fbaf, M; δ, LP_cache, verbose = true)
-
-#     run_FBA!(M, FBAmode; LP_cache, δ, δμ, DyBiom, verbose = false)
-
-# end
-
 ## ----------------------------------------------------------------------------
 # TODO: make script args
 REDO_MAXENT = false
 REDO_FBA = false
-
-# ## ----------------------------------------------------------------------------
-# # Compat
-# let
-#     δ = 0.08 # marginal discretization factor
-#     δμ = 0.01 # ME_BOUNDED biomass variance
-#     Vls, Ds, ϵs, τs = DINDEX[[:Vls, :Ds, :ϵs, :τs]]
-#     params = Iterators.product(Vls, Ds, ϵs, τs)
-#     for (Vl, D, ϵ, τ) in params
-#         cfile = dat_file(;Vl, D, ϵ, τ, δ, δμ)
-#         if isfile(cfile) # Check caches
-#             @info("Doing", cfile)
-#             MDAT = deserialize(cfile)
-#             MDAT[:M0] = idxdat([:M], Vl, D, ϵ, τ)
-#             serialize(cfile, MDAT)
-#         end
-#     end
-
-# end
 
 ## ----------------------------------------------------------------------------
 # COMPUTE MARGINALS
 INDEX = UJL.DictTree() # marginals dat
 let
     δ = INDEX[:δ]   = 0.08 # marginal discretization factor
-    δμ = INDEX[:δμ] = 0.01 # ME_BOUNDED biomass variance
+    δμ = INDEX[:δμ] = 0.01 # ME_Z_FIXXED_G_OPEN biomass variance
     gc = 0
 
     INDEX[:Vls], INDEX[:Ds] = [], []
@@ -216,20 +187,24 @@ let
     end
     N = length(params)
     
+    LP_cache = nothing
     @threads for thid in 1:nthreads()
         for (Vl, D, ϵ, τ) in Ch
             cfile = dat_file(;Vl, D, ϵ, τ, δ, δμ)
             
             ## ----------------------------------------------------------------------------
             MDAT = UJL.DictTree()
-            M0 = MDAT[:M0] = idxdat([:M], Vl, D, ϵ, τ)
-            status = idxdat([:status], Vl, D, ϵ, τ)
-            LP_cache = nothing
+            M0 = MDAT[:M0] = idxdat([:M], Vl, D, ϵ, τ; cache = true)
+            status = idxdat([:status], Vl, D, ϵ, τ; cache = false, emptycache = true)
             
+            # LP_cache = nothing
             c = nothing
             lock(WLOCK) do
                 gc += 1; c = gc
-                LP_cache = InLP.vgvatp_cache(M0)
+                
+                # LP_cache = InLP.vgvatp_cache(M0)
+                isnothing(LP_cache) && (LP_cache = InLP.vgvatp_cache(M0))
+
                 push!(INDEX[:Vls], Vl); push!(INDEX[:Ds], D)
                 push!(INDEX[:ϵs], ϵ); push!(INDEX[:τs], τ)
                 INDEX[:DFILE, Vl, D, ϵ, τ] = relpath(cfile, InCh.PROJECT_DIR)
@@ -252,7 +227,7 @@ let
                 end
                 continue 
             end
-            
+
             ## ----------------------------------------------------------------------------
             if isfile(cfile) # Check caches
                 if REDO_MAXENT || REDO_FBA
@@ -286,10 +261,16 @@ let
             lock(WLOCK) do
                 MDAT[:DyMs] = DyMs
             end
+            DyMs = nothing
 
-            ## ----------------------------------------------------------------------------
+            ## ----------------------------------------------------------------------------  
             # MaxEnt marginals
-            for MEmode in [ME_HOMO, ME_BOUNDED, ME_CUTTED, ME_EXPECTED]
+            for MEmode in [ 
+                    ME_Z_OPEN_G_OPEN, ME_Z_OPEN_G_BOUNDED, 
+                    ME_Z_EXPECTED_G_OPEN, ME_Z_EXPECTED_G_BOUNDED,
+                    ME_Z_FIXXED_G_OPEN, ME_Z_FIXXED_G_BOUNDED
+                ]
+
                 isfile(cfile) && !REDO_MAXENT && break
 
                     # Setup network
@@ -319,7 +300,11 @@ let
 
             ## ----------------------------------------------------------------------------
             # FBA
-            for FBAmode in [FBA_BOUNDED, FBA_OPEN]
+            for FBAmode in [
+                    FBA_Z_OPEN_G_OPEN, FBA_Z_OPEN_G_BOUNDED,
+                    FBA_Z_FIXXED_G_OPEN, FBA_Z_FIXXED_G_BOUNDED
+                ]
+                
                 isfile(cfile) && !REDO_FBA && break
 
                     # Setup network

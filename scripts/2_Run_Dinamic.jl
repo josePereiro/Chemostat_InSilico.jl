@@ -69,7 +69,7 @@ INDEX = UJL.DictTree() # To Store relevant information
     stst_window = 250
     check_stst_init = 2000
     check_stst_frec = 1000
-    savedat_frec = 100
+    savedat_frec = 1000
     info_frec = 100
     push_frec = 10
     death_th = INDEX[:death_th] = 1e-2
@@ -79,7 +79,7 @@ INDEX = UJL.DictTree() # To Store relevant information
     Vls = INDEX[:Vls] = [0.0]
     Ds = INDEX[:Ds]= 0.003:0.003:0.05 |> collect
     # Ds = INDEX[:Ds] = [0.005, 0.01, 0.015, 0.02, 0.03]
-    ϵs = INDEX[:ϵs] = [0.01, 0.1, 0.5, 1.0]
+    ϵs = INDEX[:ϵs] = [0.01, 0.1, 0.3, 0.5, 0.7, 1.0]
     # ϵs = INDEX[:ϵs] = [[0.001, 0.01]; 0.1:0.1:1.0]
     # τs = [0.0, 0.0022]
     τs = INDEX[:τs] = [0.0]
@@ -164,7 +164,6 @@ INDEX = UJL.DictTree() # To Store relevant information
                 # save data
                 save_dat = rem(it, savedat_frec) == 0 || finished
                 save_dat && serialize(cfile, (;status, TS, M))
-                save_dat && touch(cfile) # plotting trigger
                     
                 # info and lock dat
                 show_info = rem(it, info_frec) == 0
@@ -183,7 +182,7 @@ INDEX = UJL.DictTree() # To Store relevant information
                 return finished
             end
             
-            if status == :running 
+            if status == :running
                 M.niters = Int(36100)
                 InLP.run_simulation_fPx!(M; 
                     it0 = tslen * push_frec,

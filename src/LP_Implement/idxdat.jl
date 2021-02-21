@@ -1,6 +1,7 @@
 # TODO: package this
 const IDXDAT_CACHE = Dict()
-function idxdat(INDEX, dk::Vector, indexks...; cache = true)
+function idxdat(INDEX, dk::Vector, indexks...; cache = true, emptycache = false)
+    emptycache && empty!(IDXDAT_CACHE)
     FILE = INDEX[:DFILE, indexks...]
     if FILE isa ITERABLE
         dat = []
