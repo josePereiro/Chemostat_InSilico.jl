@@ -43,7 +43,26 @@ EXP_PARAMS = Iterators.product(INDEX[[:Vls, :Ds, :ϵs, :τs]]...)
 mysavefig(p, pname; params...) = 
     InLP.mysavefig(p, pname, InLP.DYN_FIGURES_DIR, fileid; params...)
 
-# ----------------------------------------------------------------------------
+## ----------------------------------------------------------------------------
+# Ststs reach
+let
+    push_frec = 10 ## see run_dynamic
+    EXP_PARAMS = Iterators.product(INDEX[[:Vls, :Ds, :ϵs, :τs]]...)
+    max_iter = 0
+    for (Vl, D, ϵ, τ) in EXP_PARAMS
+        status = idxdat([:status], Vl, D, ϵ, τ)
+        status != :stst && continue
+        TS = idxdat([:TS], Vl, D, ϵ, τ)
+        M = idxdat([:M], Vl, D, ϵ, τ)
+        
+        iter = length(TS) * push_frec
+        iter > max_iter && (max_iter = iter)
+
+        @info("Stst", (Vl, D, ϵ, τ), iter, max_iter, M.niters)
+    end
+end
+
+## ----------------------------------------------------------------------------
 # Separated Polytopes
 let
     Vl = INDEX[:Vls] |> first
@@ -153,10 +172,11 @@ let
 
     for Vl in INDEX[:Vls], τ in INDEX[:τs]
         ps = Plots.Plot[]
-        for field in fields
-            for D in Ds
+        for D in Ds
+            TSs = idxdat([:TS], Vl, D, INDEX[:ϵs], τ)
+            for field in fields
                 ylabel = replace(string(field), "_ts" => "")
-                vals = getfield.(idxdat([:TS], Vl, D, INDEX[:ϵs], τ), field) 
+                vals = getfield.(TSs, field) 
                 ylim = InLP.lims(marginf, vals...)
                 
                 p = plot(;xlabel = "time", ylabel, 
@@ -206,7 +226,7 @@ let
                 get!(dat, :ys, [])
                 get!(dat, :colors, [])
 
-                y = getfield(M, field) 
+                y = getfield(M, field)
 
                 push!(dat[:xs], D)
                 push!(dat[:ys], y)

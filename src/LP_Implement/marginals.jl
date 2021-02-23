@@ -5,15 +5,13 @@ function get_marginals(f::Function, M::SimModel, rxns = M.net.rxns;
         verbose = true, δ = 0.06, LP_cache = nothing)
     isempty(M.Xb) && error("Xb is empty!!!")
     
-    if isnothing(LP_cache)
-        LP_cache = vgvatp_cache(M)
-    end
+    isnothing(LP_cache) = (LP_cache = vgvatp_cache(M))
     
     vatp_range, vg_ranges = vatpvg_ranges(M)
 
-    # Collecting
+    # COLLECTING
     verbose && (prog = Progress(3 * length(rxns)))
-    raw_marginals = Dict()
+    raw_marginals = Dict{String, Dict{Float64, Float64}}()
     for rxn in rxns
         rxni = rxnindex(M.net, rxn)
         raw_marginal = get!(raw_marginals, rxn, Dict{Float64, Float64}())
@@ -30,33 +28,37 @@ function get_marginals(f::Function, M::SimModel, rxns = M.net.rxns;
         verbose && next!(prog)
     end
 
-    # rounding
-    marginals = Dict()
-    for (rxn, raw_marginal) in raw_marginals
-        marginal = get!(marginals, rxn, Dict{Float64, Float64}())
+    # ROUNDING
+    # marginals = Dict{String, Dict{Float64, Float64}}()
+    # for (rxn, raw_marginal) in raw_marginals
+    #     marginal = get!(marginals, rxn, Dict{Float64, Float64}())
         
-        flxs = keys(raw_marginal)
-        flxL, flxU = minimum(flxs), maximum(flxs)
-        Δ = abs(flxL - flxU) * δ
+    #     flxs = keys(raw_marginal)
+    #     flxL, flxU = minimum(flxs), maximum(flxs)
+    #     Δ = abs(flxL - flxU) * δ
 
-        for (raw_flx, p) in raw_marginal
-            dflx = _discretize(raw_flx, Δ)
-            get!(marginal, dflx, 0.0)
-            marginal[dflx] += p
-        end
+    #     for (raw_flx, p) in raw_marginal
+    #         dflx = _discretize(raw_flx, Δ)
+    #         get!(marginal, dflx, 0.0)
+    #         marginal[dflx] += p
+    #     end
 
-        verbose && next!(prog)
-    end
+    #     verbose && next!(prog)
+    # end
+    
+    # Test
+    marginals = raw_marginals
 
-    # normalizing
+    # NORMALIZING
     for (rxn, marginal) in marginals
         Z = sum(values(marginal))
         @assert Z > 0
         for (flx, p) in marginal
             marginal[flx] = p/Z
         end
-        sum_ = sum(values(marginal))
-        @assert(isapprox(sum_, 1.0; atol = 1e-8), sum_)
+
+        # sum_ = sum(values(marginal))
+        # @assert(isapprox(sum_, 1.0; atol = 1e-8), sum_)
         verbose && next!(prog)
     end
 

@@ -32,9 +32,7 @@ include("idxdat.jl")
 include("mysavefig.jl")
 include("pos_defined.jl")
 include("yLP.jl")
+include("join.jl")
 
-export MAX_SENSE, MIN_SENSE, fba, fva
-export MetNet, ToyModel, rxnindex, metindex, fix!, fixxing, Δv, U, L, ABS_MAX_BOUND
-export SimModel, ResTS, run_simulation!, vgvatp_cache, plot_res
 
 end

@@ -6,6 +6,7 @@ const BIOMASS_IDER = "biom"
 const RXNS = [ "gt"  , "ferm" , "resp" , "ldh" ,  "lt" , BIOMASS_IDER , "atpm" , "vatp" ]
 const METS = ["G", "E", "P", "L", "AUX1"]
 const Y = 348 
+const ATPM = 1.0625 # mmol/gDW h
 
 struct MetNet
 
@@ -32,8 +33,8 @@ function ToyModel()
     Nr = 38.0
     y = -Y        # mmol/gDW
     Vr = 0.45     # mmol/gDW h
-    ATPM = 1.0625 # mmol/gDW h
     Vg = 0.5      # mmol/gDW h
+    atpm = ATPM # mmol/gDW h
 
     net[:S] = 
     # rxns: gt    ferm  resp  ldh   lt   biom    atpm  vatp    # mets
@@ -50,8 +51,8 @@ function ToyModel()
     AB = ABS_MAX_BOUND
     net[:rxns] = deepcopy(RXNS)
     #            [ "gt"  , "ferm" , "resp" , "ldh" ,  "lt" , BIOMASS_IDER , "atpm" , "vatp" ]
-    net[:lb]   = [ 0.0   ,  0.0   ,  0.0   ,  0.0  ,  -AB  ,     0.0      ,  ATPM  ,  0.0   ];
-    net[:ub]   = [  Vg   ,  AB    ,   Vr   ,  AB   ,   0.0 ,      AB      ,  ATPM  ,  AB    ];
+    net[:lb]   = [ 0.0   ,  0.0   ,  0.0   ,  0.0  ,  -AB  ,     0.0      ,  atpm  ,  0.0   ];
+    net[:ub]   = [  Vg   ,  AB    ,   Vr   ,  AB   ,   0.0 ,      AB      ,  atpm  ,  AB    ];
     net[:c]    = [ 0.0   ,  0.0   ,  0.0   ,  0.0  ,   0.0 ,  MAX_SENSE   ,   0.0  ,  0.0   ];
     return MetNet(;net...)
 end

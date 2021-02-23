@@ -31,12 +31,13 @@ const WLOCK = ReentrantLock()
 
 # ----------------------------------------------------------------------------
 # METHOD VARIANTS
-const ME_Z_OPEN_G_OPEN        = :ME_Z_OPEN_G_OPEN           # Do not use extra constraints
-const ME_Z_OPEN_G_BOUNDED     = :ME_Z_OPEN_G_BOUNDED        # 
-const ME_Z_EXPECTED_G_OPEN    = :ME_Z_EXPECTED_G_OPEN       # Match ME and Dy biom average
-const ME_Z_EXPECTED_G_BOUNDED = :ME_Z_EXPECTED_G_BOUNDED    # Match ME and Dy biom average and constraint av_ug
-const ME_Z_FIXXED_G_OPEN      = :ME_Z_FIXXED_G_OPEN         # Fix biom around observed
-const ME_Z_FIXXED_G_BOUNDED   = :ME_Z_FIXXED_G_BOUNDED      # Fix biom around observed
+const ME_Z_OPEN_G_OPEN          = :ME_Z_OPEN_G_OPEN           # Do not use extra constraints
+const ME_Z_OPEN_G_BOUNDED       = :ME_Z_OPEN_G_BOUNDED        # 
+const ME_Z_EXPECTED_G_OPEN      = :ME_Z_EXPECTED_G_OPEN       # Match ME and Dy biom average
+const ME_Z_EXPECTED_G_EXPECTED  = :ME_Z_EXPECTED_G_EXPECTED   # 
+const ME_Z_EXPECTED_G_BOUNDED   = :ME_Z_EXPECTED_G_BOUNDED    # Match ME and Dy biom average and constraint av_ug
+const ME_Z_FIXXED_G_OPEN        = :ME_Z_FIXXED_G_OPEN         # Fix biom around observed
+const ME_Z_FIXXED_G_BOUNDED     = :ME_Z_FIXXED_G_BOUNDED      # Fix biom around observed
 
 const FBA_Z_OPEN_G_OPEN       = :FBA_Z_OPEN_G_OPEN
 const FBA_Z_OPEN_G_BOUNDED    = :FBA_Z_OPEN_G_BOUNDED
@@ -45,12 +46,12 @@ const FBA_Z_FIXXED_G_BOUNDED  = :FBA_Z_FIXXED_G_BOUNDED
 
 
 ## ----------------------------------------------------------------------------
-function run_ME!(M, MEmode; LP_cache, δ, δμ, DyBiom, verbose = true)
+function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
     
-    # MaxEnt fun
-    y = InLP.Y # atp/biomass yield
-    maxentf(beta) = (vatp, vg) -> exp(beta * vatp/y)
-
+    # biomass rate
+    biom_idx = M.obj_idx
+    z(vatp, vg) = LP_cache[vatp][vg][biom_idx]
+    
     # G BOUNDING
     if MEmode == ME_Z_OPEN_G_BOUNDED ||
             MEmode == ME_Z_EXPECTED_G_BOUNDED ||
@@ -59,45 +60,111 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, DyBiom, verbose = true)
         net = M.net
         net.ub[M.vg_idx] = min(M.Vg, M.cg * M.D/ M.X)
         net.ub[M.vl_idx] = min(M.Vl, M.cl * M.D/ M.X)
-        L, U = InLP.fva(M.net)
+        L, U = InLP.fva(net)
         net.lb .= L; net.ub .= U
     end
 
-    # Z EXPECTED
-    beta0 = 0.0
+    beta_biom = 0.0
+    beta_vg = 0.0
+
+    # EXPECTED
     if MEmode == ME_Z_EXPECTED_G_OPEN || 
             MEmode == ME_Z_EXPECTED_G_BOUNDED
+        verb_frec = 50
+
         # Gradient descent
-        target = DyBiom
-        x0 = 1.5e3
+        target = biom_avPX
+        x0 = 1.5e2
         x1 = x0 * 0.9
         maxΔ = 100.0
         th = 1e-3
         maxiters = 500
         it = 1
 
-        # Dynamic caching
-        beta0 = UJL.grad_desc(;target, x0, x1, maxΔ, th, maxiters, verbose) do beta
+        # grad desc
+        join = InLP.get_join(M)
+        function f1(beta_biom)
 
-            MEMs = InLP.get_marginals(maxentf(beta), M, [InLP.BIOMASS_IDER]; 
-                δ, verbose = false, LP_cache)
-            f = InLP.av(MEMs[InLP.BIOMASS_IDER])
-
-            show_info = it == 1 || rem(it, 50) == 0 || 
-                it == maxiters || abs(target - f)/target < th
+            PME = InLP.get_join!(M, join) do vatp, vg
+                exp(beta_biom * z(vatp, vg))
+            end
+            biom_avPME = InLP.ave_over(PME) do vatp, vg
+                z(vatp, vg)
+            end
+            
+            err = abs(biom_avPX - biom_avPME)/biom_avPX
+            show_info = it == 1 || rem(it, verb_frec) == 0 || 
+                it == maxiters || err < th
             show_info && lock(WLOCK) do
                 thid = threadid()
                 @info("Grad Descent ", 
                     it, MEmode, 
-                    target, f, 
-                    (target - f), 
-                    beta, thid
+                    (biom_avPX, biom_avPME), 
+                    err, beta_biom, thid
                 ); println()
             end
 
             it += 1
-            return f
+            return biom_avPME
         end
+
+        beta_biom = UJL.grad_desc(f1; th, 
+            target, x0, x1, maxΔ, maxiters, 
+            verbose = false
+        )
+
+    end
+
+    if MEmode == ME_Z_EXPECTED_G_EXPECTED
+
+        verb_frec = 50
+
+        target = [biom_avPX, vg_avPX]
+        x0 = [100.0, -10.0]
+        x1 = [101.0, -11.0]
+        maxΔ = [80.0, 30.0]
+        maxiters = 500
+        th = 1e-3
+        it = 1
+
+        join = InLP.get_join(M)
+        function f2(betas)
+            biom_beta, vg_beta = betas
+            PME = InLP.get_join!(M, join) do vatp, vg
+                v = [z(vatp, vg), vg]
+                exp(betas' * v)
+            end
+            biom_avPME = InLP.ave_over(PME) do vatp, vg
+                z(vatp, vg)
+            end
+            vg_avPME = InLP.ave_over(PME) do vatp, vg
+                vg
+            end
+            
+            biom_err = abs(biom_avPX - biom_avPME)/biom_avPX
+            vg_err = abs(vg_avPX - vg_avPME)/vg_avPX
+            err = max(biom_err, vg_err)
+            show_info = it == 1 || rem(it, verb_frec) == 0 || 
+                it == maxiters || err < th
+            show_info && lock(WLOCK) do
+                thid = threadid()
+                @info("Grad Descent ", 
+                    it, MEmode, 
+                    (biom_avPX, biom_avPME),
+                    (vg_avPX, vg_avPME),
+                    err, biom_beta, vg_beta, 
+                    thid
+                ); println()
+            end
+
+            it += 1
+            return [biom_avPME, vg_avPME]
+        end
+
+        beta_biom, beta_vg = UJL.grad_desc_vec(f2; 
+            target, x0, x1, maxΔ, th, maxiters, 
+            verbose = false
+        )
     end
 
     # Z FIXXED
@@ -105,27 +172,29 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, DyBiom, verbose = true)
             MEmode == ME_Z_FIXXED_G_BOUNDED
         # Fix biomass to observable
         net = M.net
-        net.ub[M.obj_idx] = DyBiom * (1.0 + δμ)
-        net.lb[M.obj_idx] = DyBiom * (1.0 - δμ)
-        L, U = InLP.fva(M.net)
+        net.ub[M.obj_idx] = biom_avPX * (1.0 + δμ)
+        net.lb[M.obj_idx] = biom_avPX * (1.0 - δμ)
+        L, U = InLP.fva(net)
         net.lb .= L; net.ub .= U
     end
 
-    MEMs = InLP.get_marginals(maxentf(beta0), M; δ, LP_cache, verbose)
-    return MEMs, beta0
+    MEMs = InLP.get_marginals(M; δ, LP_cache, verbose = false) do vatp, vg
+        exp((beta_biom * z(vatp, vg)) + (beta_vg * vg))
+    end
+    return MEMs, beta_biom, beta_vg
 end
 
 ## ----------------------------------------------------------------------------
-function run_FBA!(M, FBAmode; LP_cache, δ, δμ, DyBiom, verbose = true)
+function run_FBA!(M, FBAmode; LP_cache, δ, δμ, biom_avPX, verbose = true)
 
     # Z FIXXED
     if FBAmode == FBA_Z_FIXXED_G_OPEN || 
             FBAmode == FBA_Z_FIXXED_G_BOUNDED
         # Fix biomass to observable
         net = M.net
-        net.ub[M.obj_idx] = DyBiom * (1.0 + δμ)
-        net.lb[M.obj_idx] = DyBiom * (1.0 - δμ)
-        L, U = InLP.fva(M.net)
+        net.ub[M.obj_idx] = biom_avPX * (1.0 + δμ)
+        net.lb[M.obj_idx] = biom_avPX * (1.0 - δμ)
+        L, U = InLP.fva(net)
         net.lb .= L; net.ub .= U
     end
 
@@ -136,7 +205,7 @@ function run_FBA!(M, FBAmode; LP_cache, δ, δμ, DyBiom, verbose = true)
         net = M.net
         net.ub[M.vg_idx] = min(M.Vg, M.cg * M.D/ M.X)
         net.ub[M.vl_idx] = min(M.Vl, M.cl * M.D/ M.X)
-        L, U = InLP.fva(M.net)
+        L, U = InLP.fva(net)
         net.lb .= L; net.ub .= U
     end
 
@@ -257,7 +326,8 @@ let
             f(vatp, vg) = M0.Xb[vatp][vg] / M0.X
             DyMs = InLP.get_marginals(f, M0; 
                 δ, LP_cache, verbose = false)
-            DyBiom = InLP.av(DyMs[InLP.BIOMASS_IDER]) # biomass dynamic mean
+            biom_avPX = InLP.av(DyMs[InLP.BIOMASS_IDER]) # biomass dynamic mean
+            vg_avPX = InLP.av(DyMs["gt"]) # biomass dynamic mean
             lock(WLOCK) do
                 MDAT[:DyMs] = DyMs
             end
@@ -268,7 +338,8 @@ let
             for MEmode in [ 
                     ME_Z_OPEN_G_OPEN, ME_Z_OPEN_G_BOUNDED, 
                     ME_Z_EXPECTED_G_OPEN, ME_Z_EXPECTED_G_BOUNDED,
-                    ME_Z_FIXXED_G_OPEN, ME_Z_FIXXED_G_BOUNDED
+                    ME_Z_FIXXED_G_OPEN, ME_Z_FIXXED_G_BOUNDED, 
+                    ME_Z_EXPECTED_G_EXPECTED
                 ]
 
                 isfile(cfile) && !REDO_MAXENT && break
@@ -276,9 +347,12 @@ let
                     # Setup network
                     M = deepcopy(M0)
                     
-                    MEMs, beta0 = run_ME!(M, MEmode; 
-                        LP_cache, δ, δμ, DyBiom, verbose = false)
-                    MEBiom = InLP.av(MEMs[InLP.BIOMASS_IDER]) # biomass dynamic mean
+                    MEMs, beta_biom, beta_vg = run_ME!(M, MEmode; 
+                        LP_cache, δ, δμ, 
+                        biom_avPX, vg_avPX
+                    )
+                    biom_avPME = InLP.av(MEMs[InLP.BIOMASS_IDER]) # biomass dynamic mean
+                    vg_avPME = InLP.av(MEMs["gt"]) # biomass dynamic mean
 
                     # Ranges
                     vatp_range, vg_ranges = InLP.vatpvg_ranges(M)
@@ -286,13 +360,16 @@ let
                     lock(WLOCK) do
                         MDAT[MEmode, :M] = M
                         MDAT[MEmode, :Ms] = MEMs
-                        MDAT[MEmode, :beta0] = beta0
+                        MDAT[MEmode, :beta_biom] = beta_biom
+                        MDAT[MEmode, :beta_vg] = beta_vg
                         MDAT[MEmode, :POL] = (;vatp_range, vg_ranges)
 
                         @info("Done MaxEnt  $c, prog: $gc/$N ... ",
                             MEmode,  
                             (Vl, D, ϵ, τ),
-                            M0.X, DyBiom, MEBiom,
+                            M0.X, 
+                            (biom_avPX, biom_avPME),
+                            (vg_avPX, vg_avPME),
                             thid
                         ); println()
                     end
@@ -311,8 +388,8 @@ let
                     M = deepcopy(M0)
                     
                     FBAMs = run_FBA!(M, FBAmode; 
-                        LP_cache, δ, δμ, DyBiom, verbose = false)
-                    FBABiom = InLP.av(FBAMs[InLP.BIOMASS_IDER]) # biomass dynamic mean
+                        LP_cache, δ, δμ, biom_avPX, verbose = false)
+                    biom_avFBA = InLP.av(FBAMs[InLP.BIOMASS_IDER]) # biomass dynamic mean
 
                     # Ranges
                     vatp_range, vg_ranges = InLP.vatpvg_ranges(M)
@@ -325,7 +402,8 @@ let
                         @info("Done FBA  $c, prog: $gc/$N ... ",
                         FBAmode,  
                             (Vl, D, ϵ, τ),
-                            M0.X, DyBiom, FBABiom,
+                            M0.X, 
+                            (biom_avPX, biom_avFBA),
                             thid
                         ); println()
                     end
@@ -338,7 +416,7 @@ let
                     M0.X, basename(cfile),
                     thid
                 ); println()
-                serialize(cfile, MDAT)
+                serialize(cfile, MDAT) 
             end
             GC.gc()
         end # for (Vl, D, ϵ, τ) in Ch
