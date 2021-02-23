@@ -964,9 +964,9 @@ uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 
 [[UtilsJL]]
 deps = ["BSON", "Colors", "Dates", "Distributed", "DrWatson", "FileIO", "FixedPointNumbers", "Images", "Logging", "PkgTemplates", "Plots", "Printf", "ProgressMeter", "Serialization", "SparseArrays"]
-git-tree-sha1 = "4ea4db427c056a8d73cf589d619da9e855dc8e36"
+git-tree-sha1 = "aabfd1d995c893418519992f37f07a4bab691ffb"
 uuid = "1d417f3e-fd42-11ea-18da-dda57c9b97b2"
-version = "0.4.9"
+version = "0.5.3"
 
 [[Wayland_jll]]
 deps = ["Artifacts", "Expat_jll", "JLLWrappers", "Libdl", "Libffi_jll", "Pkg", "XML2_jll"]
