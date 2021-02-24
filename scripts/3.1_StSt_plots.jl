@@ -117,10 +117,16 @@ function plot_pol!(p, MODsym, Vl, D, ϵ, τ; sparams...)
     p
 end
 
-function plot_marginals!(p, MODsyms, rxn, Vl, D, ϵ, τ; sparams...)
+function plot_marginals!(p, MODsyms, rxn, Vl, D, ϵ, τ; draw_av = true, sparams...)
 
     DyMs = idxdat([:DyMs], Vl, D, ϵ, τ)
     plot!(p, DyMs[rxn]; label = "", sparams..., color = :black)
+    if draw_av
+        av = InLP.av(DyMs[rxn])
+        vline!(p, [av]; label = "", sparams..., 
+            color = :black, ls = :solid, lw = 5, alpha = 0.6
+        )
+    end
     
     # Marginals
     for MODsym in MODsyms
@@ -128,6 +134,12 @@ function plot_marginals!(p, MODsyms, rxn, Vl, D, ϵ, τ; sparams...)
         color = MOD_COLORS[MODsym]
         Ms = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
         plot!(p, Ms[rxn]; label = "", color, ls, sparams...)
+        if draw_av
+            av = InLP.av(Ms[rxn])
+            vline!(p, [av]; label = "", color, sparams..., 
+                ls = :solid, lw = 5, alpha = 0.6
+            )
+        end
     end
     return p
 end
@@ -136,7 +148,7 @@ plot_marginals!(p, MODsyms::Symbol, rxn, Vl, D, ϵ, τ; sparams...) =
 
 
 ## ----------------------------------------------------------------------------
-# Check dyn constraints
+# Check dyn quality
 let
 
     biom_prods, bioms_drains = [], []
@@ -212,62 +224,6 @@ let
     ps = Plots.Plot[biom_bal_p, biom_corr_p, glc_bal_p, glc_corr_b]
     mysavefig(ps, "dyn_balances")
 
-end
-
-## ----------------------------------------------------------------------------
-# Dev
-let
-    Vl = MINDEX[:Vls] |> first
-    τ = MINDEX[:τs] |> first
-    D = MINDEX[:Ds][2]
-    ϵ = MINDEX[:ϵs][end]
-    MODsym = ME_Z_EXPECTED_G_BOUNDED
-    y = InLP.Y
-    atpm = 1.0625
-    
-    status = MINDEX[:STATUS, Vl, D, ϵ, τ]
-    M = idxdat([MODsym, :M], Vl, D, ϵ, τ)
-    LP_cache = InLP.vgvatp_cache(M)
-    beta_biom = idxdat([MODsym, :beta_biom], Vl, D, ϵ, τ)
-    beta_vg = idxdat([MODsym, :beta_vg], Vl, D, ϵ, τ)
-    biom_idx = M.obj_idx
-    z(vatp, vg) = LP_cache[vatp][vg][biom_idx]
-
-    # join 
-    PME = InLP.get_join(M) do vatp, vg
-        betas = [beta_biom, beta_vg]
-        v = [z(vatp, vg) , vg]
-        exp(betas' * v)
-    end
-    biom_avPME = InLP.ave_over(PME) do vatp, vg
-        z(vatp, vg)
-    end
-    vatp_avPME = InLP.ave_over(PME) do vatp, vg
-        vatp
-    end
-    vg_avPME = InLP.ave_over(PME) do vatp, vg
-        vg
-    end
-
-    # marginals
-    δ = 0.08
-    
-    MEMs = InLP.get_marginals(M; δ, LP_cache, verbose = false) do vatp, vg
-        betas = [beta_biom, beta_vg]
-        v = [z(vatp, vg), vg]
-        exp(betas' * v)
-    end
-    biom_avMs = InLP.av(MEMs["biom"])
-    vatp_avMs = InLP.av(MEMs["vatp"])
-    vg_avMs = InLP.av(MEMs["gt"])
-
-    @info("Doing", status,
-        (Vl, D, ϵ, τ),
-        beta_biom, beta_vg,
-        (biom_avPME, biom_avMs),
-        (vatp_avPME, vatp_avMs),
-        (vg_avPME, vg_avMs),
-    ); println()
 end
 
 ## ----------------------------------------------------------------------------
@@ -365,15 +321,105 @@ let
     end
 end
 
+# ## ----------------------------------------------------------------------------
+# let
+
+#     params = EXP_PARAMS |> collect
+#     δ = 0.08
+#     LP_cache = nothing
+
+#     @threads for (Vl, D, ϵ, τ) in params
+#         status = MINDEX[:STATUS, Vl, D, ϵ, τ]
+#         status != :stst && continue
+        
+#         # LOAD DATA
+#         cfile = MINDEX[:DFILE, Vl, D, ϵ, τ]
+
+#         @info("Doing", 
+#             (Vl, D, ϵ, τ), δ
+#         )
+
+#         # RECOMPUTE MARGINALS
+#         M0 = idxdat([:M0], Vl, D, ϵ, τ)
+#         LP_cache = isnothing(LP_cache) ? InLP.vgvatp_cache(M0) : LP_cache
+#         MDAT = deserialize(cfile)
+
+#         @info("Dynamic") 
+#         MDAT[:DyMs] = InLP.get_marginals(M0; δ, LP_cache, verbose = false) do vatp, vg
+#             M0.Xb[vatp][vg] / M0.X
+#         end
+
+#         # EP
+#         for MODsym in [
+#                     ME_Z_OPEN_G_OPEN, ME_Z_OPEN_G_BOUNDED, 
+#                     ME_Z_EXPECTED_G_OPEN, ME_Z_EXPECTED_G_BOUNDED,
+#                     ME_Z_FIXXED_G_OPEN, ME_Z_FIXXED_G_BOUNDED, 
+#                     ME_Z_EXPECTED_G_EXPECTED
+#                 ]
+#             M = idxdat([MODsym, :M], Vl, D, ϵ, τ)
+#             beta_biom = idxdat([MODsym, :beta_biom], Vl, D, ϵ, τ)
+#             beta_vg = idxdat([MODsym, :beta_vg], Vl, D, ϵ, τ)
+            
+#             @info("EP", MODsym, beta_biom, beta_vg)
+#             z(vatp, vg) = LP_cache[vatp][vg][M.obj_idx]
+#             MDAT[MODsym, :Ms] = InLP.get_marginals(M; δ, LP_cache, verbose = false) do vatp, vg
+#                 exp((beta_biom * z(vatp, vg)) + (beta_vg * vg))
+#             end
+#         end
+
+#         # FBA
+#         for MODsym in [
+#                     FBA_Z_OPEN_G_OPEN, FBA_Z_OPEN_G_BOUNDED, 
+#                     FBA_Z_FIXXED_G_OPEN, FBA_Z_FIXXED_G_BOUNDED
+#                 ]
+#             M = idxdat([MODsym, :M], Vl, D, ϵ, τ)
+            
+#             @info("FBA", MODsym)
+#             # FBA
+#             # Find maximum feasible vatp
+#             vatp_range, vg_ranges = InLP.vatpvg_ranges(M)
+#             max_vatp = -Inf
+#             min_vg = Inf
+#             # (max_vatp, min_vg) will maximize the yield
+#             for (vatpi, vatp) in vatp_range |> enumerate
+#                 vg_range = vg_ranges[vatpi]
+#                 isempty(vg_range) && continue
+#                 if vatp > max_vatp
+#                     max_vatp = vatp
+#                     min_vg = minimum(vg_range)
+#                 end
+#             end
+#             @assert !isinf(max_vatp)
+
+#             fbaf(vatp, vg) = (vatp == max_vatp && vg == min_vg) ? 1.0 : 0.0
+#             MDAT[MODsym, :Ms] = InLP.get_marginals(fbaf, M; δ, LP_cache, verbose = false)
+#         end
+
+
+#         # SAVING
+#         serialize(cfile, MDAT)
+#         InLP.idxdat(;emptytcache = true)
+        
+#         # # TEST
+#         # rxn = "biom"
+#         # InLP.idxdat(;emptytcache = true)
+#         # p = plot(;title = rxn, xlabel = "flx", ylabel = "prob")
+#         # plot_marginals!(p, ALL_MODELS, rxn, Vl, D, ϵ, τ)
+#         # mysavefig(p, "test")
+
+
+#     end # for (Vl, D, ϵ, τ) in params
+# end
+
 ## ----------------------------------------------------------------------------
 # vatp, vg marginals v2
 let
     MODELS = [
-        ME_Z_OPEN_G_OPEN, 
+        # ME_Z_OPEN_G_OPEN, 
         # ME_Z_OPEN_G_BOUNDED, 
         # ME_Z_EXPECTED_G_OPEN, 
         ME_Z_EXPECTED_G_BOUNDED,
-        ME_Z_EXPECTED_G_EXPECTED,
+        # ME_Z_EXPECTED_G_EXPECTED,
         # ME_Z_FIXXED_G_OPEN, 
         # ME_Z_FIXXED_G_BOUNDED, 
         # FBA_Z_OPEN_G_OPEN, 
@@ -394,7 +440,8 @@ let
     )
 
     for (Vl, D, ϵ, τ) in EXP_PARAMS
-        MINDEX[:STATUS, Vl, D, ϵ, τ] != :stst && continue
+        status = MINDEX[:STATUS, Vl, D, ϵ, τ]
+        status != :stst && continue
         ps = Plots.Plot[]
         sparams =(;ylim = [0.0, Inf], lw = 4)
         gparams = (;grid = false)

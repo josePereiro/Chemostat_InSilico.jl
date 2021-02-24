@@ -29,25 +29,22 @@ function get_marginals(f::Function, M::SimModel, rxns = M.net.rxns;
     end
 
     # ROUNDING
-    # marginals = Dict{String, Dict{Float64, Float64}}()
-    # for (rxn, raw_marginal) in raw_marginals
-    #     marginal = get!(marginals, rxn, Dict{Float64, Float64}())
+    marginals = Dict{String, Dict{Float64, Float64}}()
+    for (rxn, raw_marginal) in raw_marginals
+        marginal = get!(marginals, rxn, Dict{Float64, Float64}())
         
-    #     flxs = keys(raw_marginal)
-    #     flxL, flxU = minimum(flxs), maximum(flxs)
-    #     Δ = abs(flxL - flxU) * δ
+        flxs = keys(raw_marginal)
+        flxL, flxU = minimum(flxs), maximum(flxs)
+        Δ = abs(flxL - flxU) * δ
 
-    #     for (raw_flx, p) in raw_marginal
-    #         dflx = _discretize(raw_flx, Δ)
-    #         get!(marginal, dflx, 0.0)
-    #         marginal[dflx] += p
-    #     end
+        for (raw_flx, p) in raw_marginal
+            dflx = _discretize(raw_flx, Δ)
+            get!(marginal, dflx, 0.0)
+            marginal[dflx] += p
+        end
 
-    #     verbose && next!(prog)
-    # end
-    
-    # Test
-    marginals = raw_marginals
+        verbose && next!(prog)
+    end
 
     # NORMALIZING
     for (rxn, marginal) in marginals

@@ -323,9 +323,8 @@ let
             
             ## ----------------------------------------------------------------------------
             # Dynamic marginal
-            f(vatp, vg) = M0.Xb[vatp][vg] / M0.X
-            DyMs = InLP.get_marginals(f, M0; 
-                δ, LP_cache, verbose = false)
+            fX(vatp, vg) = M0.Xb[vatp][vg] / M0.X
+            DyMs = InLP.get_marginals(fX, M0; δ, LP_cache, verbose = false)
             biom_avPX = InLP.av(DyMs[InLP.BIOMASS_IDER]) # biomass dynamic mean
             vg_avPX = InLP.av(DyMs["gt"]) # biomass dynamic mean
             lock(WLOCK) do
@@ -410,6 +409,7 @@ let
             end
 
             ## ----------------------------------------------------------------------------
+            # SAVING
             lock(WLOCK) do
                 @info("Finished  $c, prog: $gc/$N ... ",
                     (Vl, D, ϵ, τ),
