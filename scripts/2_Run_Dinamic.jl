@@ -78,7 +78,7 @@ INDEX = UJL.DictTree() # To Store relevant information
     # Vls = [0.0, 0.1]
     Vls = INDEX[:Vls] = [0.0]
     Ds = INDEX[:Ds]= [0.003:0.003:0.05; 0.01:0.001:0.04] |> unique! |> sort!
-    ϵs = INDEX[:ϵs] = [0.01, 0.1, 0.3, 0.5, 0.7, 1.0]
+    ϵs = INDEX[:ϵs] = [0.01, 0.1, 0.3, 0.5, 0.7, 0.8, 0.9, 1.0]
     # ϵs = INDEX[:ϵs] = [0.01, 0.5, 1.0]
     # ϵs = INDEX[:ϵs] = [[0.001, 0.01]; 0.1:0.1:1.0]
     # τs = [0.0, 0.0022]
