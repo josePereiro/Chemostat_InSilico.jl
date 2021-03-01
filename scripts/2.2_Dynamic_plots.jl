@@ -43,24 +43,24 @@ EXP_PARAMS = Iterators.product(INDEX[[:Vls, :Ds, :ϵs, :τs]]...)
 mysavefig(p, pname; params...) = 
     InLP.mysavefig(p, pname, InLP.DYN_FIGURES_DIR, fileid; params...)
 
-## ----------------------------------------------------------------------------
-# Ststs reach
-let
-    push_frec = 10 ## see run_dynamic
-    EXP_PARAMS = Iterators.product(INDEX[[:Vls, :Ds, :ϵs, :τs]]...)
-    max_iter = 0
-    for (Vl, D, ϵ, τ) in EXP_PARAMS
-        status = idxdat([:status], Vl, D, ϵ, τ)
-        status != :stst && continue
-        TS = idxdat([:TS], Vl, D, ϵ, τ)
-        M = idxdat([:M], Vl, D, ϵ, τ)
+# ## ----------------------------------------------------------------------------
+# # Ststs reach
+# let
+#     push_frec = 10 ## see run_dynamic
+#     EXP_PARAMS = Iterators.product(INDEX[[:Vls, :Ds, :ϵs, :τs]]...)
+#     max_iter = 0
+#     for (Vl, D, ϵ, τ) in EXP_PARAMS
+#         status = idxdat([:status], Vl, D, ϵ, τ)
+#         status != :stst && continue
+#         TS = idxdat([:TS], Vl, D, ϵ, τ)
+#         M = idxdat([:M], Vl, D, ϵ, τ)
         
-        iter = length(TS) * push_frec
-        iter > max_iter && (max_iter = iter)
+#         iter = length(TS) * push_frec
+#         iter > max_iter && (max_iter = iter)
 
-        @info("Stst", (Vl, D, ϵ, τ), iter, max_iter, M.niters)
-    end
-end
+#         @info("Stst", (Vl, D, ϵ, τ), iter, max_iter, M.niters)
+#     end
+# end
 
 ## ----------------------------------------------------------------------------
 # Separated Polytopes
@@ -166,7 +166,7 @@ end
 let
     marginf = 0.2
     f = identity
-    Ds = INDEX[:Ds][1:3:end]
+    Ds = INDEX[:Ds]
     fields = [:X_ts, :sg_ts, :sl_ts]
     cparams = (;lw = 4, alpha = 0.7)
 
@@ -174,6 +174,7 @@ let
         ps = Plots.Plot[]
         for D in Ds
             TSs = idxdat([:TS], Vl, D, INDEX[:ϵs], τ)
+            Dps = Plots.Plot[]
             for field in fields
                 ylabel = replace(string(field), "_ts" => "")
                 vals = getfield.(TSs, field) 
@@ -182,10 +183,13 @@ let
                 p = plot(;xlabel = "time", ylabel, 
                     title = string("D: ", UJL.sci(D)))
                 for (ϵ, val) in zip(INDEX[:ϵs], vals) |> collect |> reverse
-                    plot!(p, f.(val); label = ϵ, color = Gray(ϵ * 0.8), cparams...)
+                    plot!(p, f.(val); label = string("ϵ: ", ϵ), color = Gray(ϵ * 0.8), cparams...)
                 end
                 push!(ps, p)
+                push!(Dps, p)
             end
+            layout = length(fields), 1
+            mysavefig(Dps, "time_series_vs_ϵ_vs_D"; layout, D, Vl, τ)
         end
         
         layout = length(fields), length(Ds)

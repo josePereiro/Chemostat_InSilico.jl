@@ -85,7 +85,7 @@ function plot_marginals(marginals, rxns = keys(marginals))
             vline!(p, [av_ + std_]; label = "", alpha = 0.6, lw = 2, ls = :dot, color = :black)
             push!(ps, p)
         catch err 
-            @error string("Doing $rxn\n", err_str(err))
+            @error string("Doing $rxn\n", UJL.err_str(err))
         end
     end
     plot(ps...; layout = length(ps))

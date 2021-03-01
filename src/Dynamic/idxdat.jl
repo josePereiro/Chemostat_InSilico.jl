@@ -8,7 +8,7 @@ function idxdat(INDEX, dk::Vector, indexks...; cache = true, emptycache = false)
     TCACHE = get!(IDXDAT_CACHE, thid, Dict())
 
     DFILE = INDEX[:DFILE, indexks...]
-    if DFILE isa ITERABLE
+    if DFILE isa UJL.ITERABLE
         dat = []
         for F in DFILE
             F = joinpath(InCh.PROJECT_DIR, F)
