@@ -6,7 +6,7 @@ DW.quickactivate(@__DIR__, "Chemostat_InSilico")
 
     import Chemostat_InSilico
     const InCh = Chemostat_InSilico
-    const InLP = InCh.LP_Implement
+    const Dyn = InCh.Dynamic
     
     # Test
     using Plots
@@ -24,27 +24,10 @@ end
 
 ## -----------------------------------------------------------------------------------------------
 # Plot progress coroutine
-const DATA_DIR = InCh.DYN_DATA_DIR
+const DATA_DIR = InCh.datadir()
 const DATA_FILE_PREFFIX = "dyn_dat"
-const PROG_FIG_DIR = joinpath(InCh.DYN_FIGURES_DIR, "progress")
+const PROG_FIG_DIR = Dyn.plotsdir("progress")
 mkpath(PROG_FIG_DIR)
-
-# ## -----------------------------------------------------------------------------------------------
-# # Compat
-# # Fix fignames
-# let
-#     dir = PROG_FIG_DIR
-#     for figname in readdir(dir)
-#         fixname = replace(figname, "_tslen_" => "_tslen=")
-#         fixname == figname && continue
-#         mv(
-#             joinpath(dir, figname), 
-#             joinpath(dir, fixname);
-#             force = true
-#         )
-#         @show fixname
-#     end
-# end
 
 ## -----------------------------------------------------------------------------------------------
 # Progress plots
@@ -73,7 +56,7 @@ while true
 
                 @info("Updating progress", fname, now()); println()
                 
-                p = InLP.plot_res(M, TS)
+                p = Dyn.plot_res(M, TS)
                 savefig(p, curr_figfile)
                 savefig(p, hist_figfile)
 

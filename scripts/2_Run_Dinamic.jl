@@ -4,7 +4,7 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
 @time begin
     import Chemostat_InSilico
     const InCh = Chemostat_InSilico
-    const InLP = InCh.LP_Implement
+    const Dyn = InCh.Dynamic
 
     import UtilsJL
     const UJL = UtilsJL
@@ -18,13 +18,16 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
 
 end
 
+# Compat
+# @eval InCh const LP_Implement = Dynamic
+
 ## -----------------------------------------------------------------------------------------------
 # Tools
 const WLOCK = ReentrantLock()
-const DATA_DIR = InCh.DYN_DATA_DIR
+const DATA_DIR = Dyn.procdir()
 const DATA_FILE_PREFFIX = "dyn_dat"
 dat_file(;sim_params...) = joinpath(DATA_DIR, 
-    InLP.mysavename(DATA_FILE_PREFFIX, "jls"; sim_params...))
+    UJL.mysavename(DATA_FILE_PREFFIX, "jls"; sim_params...))
 
 function check_stst(ts; stst_window, stst_th)
     @views for sym in [:X_ts, :sl_ts, :sg_ts, :D_ts]
@@ -48,7 +51,7 @@ INDEX = UJL.DictTree() # To Store relevant information
     mkpath(DATA_DIR)
 
     # base model
-    M0 = INDEX[:M0] = InLP.SimModel(;
+    M0 = INDEX[:M0] = Dyn.SimModel(;
             δvatp = 2, 
             δvg = 3, 
             X0 = 0.3,
@@ -57,11 +60,10 @@ INDEX = UJL.DictTree() # To Store relevant information
             Δt = 0.25,
         )
 
-    @info "Starting simulation" nthreads() now()
-    println()
+    @info("Starting simulation", nthreads(), now()); println()
 
     # cache
-    LP_cache = InLP.vgvatp_cache(M0)
+    LP_cache = Dyn.vgvatp_cache(M0)
 
     # simulation params
     maxiters = Int(3e4)
@@ -77,14 +79,14 @@ INDEX = UJL.DictTree() # To Store relevant information
     # Params
     # Vls = [0.0, 0.1]
     Vls = INDEX[:Vls] = [0.0]
-    Ds = INDEX[:Ds]= [0.003:0.003:0.05; 0.01:0.001:0.04] |> unique! |> sort!
-    ϵs = INDEX[:ϵs] = [0.01, 0.1, 0.3, 0.5, 0.7, 0.8, 0.9, 1.0]
+    # Ds = INDEX[:Ds]= [0.003:0.003:0.05; 0.01:0.001:0.04] |> unique! |> sort!
+    Ds = INDEX[:Ds]= collect(0.003:0.003:0.05) |> unique! |> sort!
+    ϵs = INDEX[:ϵs] = [0.01, 0.1, 0.3, 0.5, 0.7, 1.0]
     # ϵs = INDEX[:ϵs] = [0.01, 0.5, 1.0]
     # ϵs = INDEX[:ϵs] = [[0.001, 0.01]; 0.1:0.1:1.0]
     # τs = [0.0, 0.0022]
     τs = INDEX[:τs] = [0.0]
     
-    # 
     params = Iterators.product(Vls, Ds, ϵs, τs)
     N = length(params)
     @info("Computing $(N) iterations"); println() 
@@ -130,7 +132,7 @@ INDEX = UJL.DictTree() # To Store relevant information
             else
                 # setup model
                 M = deepcopy(M0)
-                TS = InLP.ResTS()
+                TS = Dyn.ResTS()
                 tslen = length(TS.X_ts)
                 status = :running
             end
@@ -182,14 +184,14 @@ INDEX = UJL.DictTree() # To Store relevant information
                 return finished
             end
             
-            if status == :running
-                M.niters = Int(36100)
-                InLP.run_simulation_fPx!(M; 
-                    it0 = tslen * push_frec,
-                    on_iter, LP_cache, 
-                    verbose = false
-                )
-            end
+            # if status == :running
+            #     M.niters = Int(36100)
+            #     Dyn.run_simulation_fPx!(M; 
+            #         it0 = tslen * push_frec,
+            #         on_iter, LP_cache, 
+            #         verbose = false
+            #     )
+            # end
             
             lock(WLOCK) do
                 runtime = round(now() - t0, Hour)
@@ -199,7 +201,7 @@ INDEX = UJL.DictTree() # To Store relevant information
                     (Vl, D, ϵ, τ), 
                     runtime, now(), thid
                 ); println()
-                INDEX[:DFILE, Vl, D, ϵ, τ] = relpath(cfile, InCh.PROJECT_DIR)
+                INDEX[:DFILE, Vl, D, ϵ, τ] = relpath(cfile, InCh.projectdir())
                 GC.gc()
             end
         end # for (Vl, D, ϵ, τ)
@@ -208,4 +210,4 @@ end
 
 ## -----------------------------------------------------------------------------------------------
 # SAVING
-UJL.save_data(InCh.DYN_DATA_INDEX_FILE, INDEX)
+UJL.save_data(Dyn.procdir("dym_dat_index.bson"), INDEX)

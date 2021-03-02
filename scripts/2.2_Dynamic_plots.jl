@@ -4,7 +4,7 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
 @time begin
     import Chemostat_InSilico
     const InCh = Chemostat_InSilico
-    const InLP = InCh.LP_Implement
+    const Dyn = InCh.Dynamic
 
     using ProgressMeter
     using Plots
@@ -27,21 +27,19 @@ end
 ## ----------------------------------------------------------------------------
 # Meta
 fileid = "2.2"
-fig_path(fname) = joinpath(InLP.DYN_FIGURES_DIR, fname)
 Base.first(v::Vector, i) = v[firstindex(v):(min(lastindex(v), i))]
 Base.last(v::Vector, i) = v[max(firstindex(v), length(v) - i + 1):lastindex(v)]
 
 ## ----------------------------------------------------------------------------
 # Load DAT
 # INDEX[:DFILE, Vl, D, ϵ, τ]
-INDEX = UJL.load_data(InCh.DYN_DATA_INDEX_FILE)
-idxdat(dk, indexks...; cache = true) = InLP.idxdat(INDEX, dk, indexks...; cache)
+INDEX = UJL.load_data(Dyn.procdir("dym_dat_index.bson"))
+idxdat(dk, indexks...; cache = true) = Dyn.idxdat(INDEX, dk, indexks...; cache)
 EXP_PARAMS = Iterators.product(INDEX[[:Vls, :Ds, :ϵs, :τs]]...)
 
 ## ----------------------------------------------------------------------------
 # PLOTS
-mysavefig(p, pname; params...) = 
-    InLP.mysavefig(p, pname, InLP.DYN_FIGURES_DIR, fileid; params...)
+mysavefig(p, pname; params...) = Dyn.mysavefig(p, pname, Dyn.plotsdir(), fileid; params...)
 
 # ## ----------------------------------------------------------------------------
 # # Ststs reach
@@ -78,7 +76,7 @@ let
         status = idxdat([:status], Vl, D, ϵ, τ)
         status != :stst && continue
         M = idxdat([:M], Vl, D, ϵ, τ)
-        vatpL, vatpU, vgL, vgU = InLP.pol_box(M)
+        vatpL, vatpU, vgL, vgU = Dyn.pol_box(M)
         G.vgU < vgU && (G = (;D, vgU, vatpU))
     end
 
@@ -95,16 +93,16 @@ let
             xlim = [-G.vatpU * 0.1, G.vatpU * 1.1],
             ylim = [-G.vgU * 0.1, G.vgU * 1.1], 
         )
-        InLP.plot_polborder!(p, M)
-        InLP.plot_poldist!(p, M; skwargs)
+        Dyn.plot_polborder!(p, M)
+        Dyn.plot_poldist!(p, M; skwargs)
 
         # Dynamic marginal
         δ = 0.08
-        LP_cache = InLP.vgvatp_cache(M)
+        LP_cache = Dyn.vgvatp_cache(M)
         f(vatp, vg) = M.Xb[vatp][vg] / M.X
-        DyMs = InLP.get_marginals(f, M; δ, LP_cache, verbose = false)
-        vatp_av = InLP.av(DyMs["vatp"]) 
-        vg_av = InLP.av(DyMs["gt"]) 
+        DyMs = Dyn.get_marginals(f, M; δ, LP_cache, verbose = false)
+        vatp_av = Dyn.av(DyMs["vatp"]) 
+        vg_av = Dyn.av(DyMs["gt"]) 
 
         kwargs = (;alpha = 0.5, label = "", color = :black)
         hline!(p, [vg_av]; lw = 5, ls = :dash, kwargs...)
@@ -141,7 +139,7 @@ end
 
 #         # full polytope
 #         M = idxdat([:M], Vl, G.D, ϵ, τ)
-#         InLP.plot_poldist!(p, M; rand_th = 0.0, 
+#         Dyn.plot_poldist!(p, M; rand_th = 0.0, 
 #             skwargs = (;G.color, alpha = 0.4)
 #         )
         
@@ -151,7 +149,7 @@ end
 #             status = idxdat([:status], Vl, D, ϵ, τ)
 #             status != :stst && continue
 #             @info "Doing" Vl, D, ϵ, τ
-#             InLP.plot_poldist!(p, M; rand_th = 1.0, 
+#             Dyn.plot_poldist!(p, M; rand_th = 1.0, 
 #                 hits_count = 100, maxiters = 1e4, 
 #                 skwargs = (;color, alpha = 0.9)
 #             )
@@ -178,7 +176,7 @@ let
             for field in fields
                 ylabel = replace(string(field), "_ts" => "")
                 vals = getfield.(TSs, field) 
-                ylim = InLP.lims(marginf, vals...)
+                ylim = Dyn.lims(marginf, vals...)
                 
                 p = plot(;xlabel = "time", ylabel, 
                     title = string("D: ", UJL.sci(D)))
@@ -321,11 +319,11 @@ let
             status != :stst && continue
 
             # Dynamic marginal
-            LP_cache = InLP.vgvatp_cache(M)
+            LP_cache = Dyn.vgvatp_cache(M)
             f(vatp, vg) = M.Xb[vatp][vg] / M.X
-            DyMs = InLP.get_marginals(f, M; δ, LP_cache, verbose = false)
-            vatp_av = InLP.av(DyMs["vatp"]) 
-            vg_av = InLP.av(DyMs["gt"]) 
+            DyMs = Dyn.get_marginals(f, M; δ, LP_cache, verbose = false)
+            vatp_av = Dyn.av(DyMs["vatp"]) 
+            vg_av = Dyn.av(DyMs["gt"]) 
 
             # marginals
             lparams = (;label = ϵ, lw = 4, alpha = 0.7, 
@@ -356,7 +354,7 @@ end
 ## ----------------------------------------------------------------------------
 # Progress gifs
 let
-    PROG_FIG_DIR = joinpath(InCh.DYN_FIGURES_DIR, "progress")
+    PROG_FIG_DIR = joinpath(InCh.Dyn.plotsdir(), "progress")
     UJL.make_group_gif("tslen", PROG_FIG_DIR)
 end
 
@@ -382,7 +380,7 @@ end
 #         vgL, vgU = Inf, -Inf
 #         for ϵ in ϵs
 #             M = DAT[:M, Vl, D, ϵ]
-#             vatpL, vatpU, vgL, vgU = InLP.pol_box(M)
+#             vatpL, vatpU, vgL, vgU = Dyn.pol_box(M)
 #             vatp_margin = abs(vatpL - vatpU) * marginf
 #             vg_margin = abs(vgL - vgU) * marginf
 #             vatpL = min(vatpL, vatpL - vatp_margin)
@@ -400,7 +398,7 @@ end
 #         for ϵ in ϵs
 #             M = DAT[:M, Vl, D, ϵ]
             
-#             p = InLP.plot_poldist(M) 
+#             p = Dyn.plot_poldist(M) 
 #             plot!(p; title = string("D: ", UJL.sci(D), " ϵ: ", UJL.sci(ϵ)), params...)
             
 #             plot!(p; xlim = [vatpL, vatpU], ylim = [vgL, vgU]) 
@@ -414,7 +412,7 @@ end
 #             @info "Making Gif" D threadid() now()
 #         end
 #         pname = UJL.mysavename("polytope_ϵ_animation", "gif"; D)
-#         fname = fig_path(string(fileid, "_", pname))
+#         fname = Dyn.plotsdir(string(fileid, "_", pname))
 #         UJL.save_gif(rps, fname; fps = 2.0)
 #         lock(write_lock) do
 #             @info "Done!!" D threadid() fname now()

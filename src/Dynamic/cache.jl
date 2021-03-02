@@ -1,5 +1,5 @@
 ## ---------------------------------------------------------  
-_vgvatp_cache_file(M::SimModel, marginf) = joinpath(CACHE_DIR, 
+_vgvatp_cache_file(M::SimModel, marginf) = joinpath(cachedir(), 
     UJL.mysavename("cache_", "jld"; M.δvatp, M.δvg, marginf)
 )
 

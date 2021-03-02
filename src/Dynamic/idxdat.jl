@@ -11,7 +11,7 @@ function idxdat(INDEX, dk::Vector, indexks...; cache = true, emptycache = false)
     if DFILE isa UJL.ITERABLE
         dat = []
         for F in DFILE
-            F = joinpath(InCh.PROJECT_DIR, F)
+            F = joinpath(InCh.projectdir(), F)
             datum = try deserialize(F)
                 catch err; @warn("Error", F); rethrow(err)
             end
@@ -19,7 +19,7 @@ function idxdat(INDEX, dk::Vector, indexks...; cache = true, emptycache = false)
         end
         return dat
     else
-        F = joinpath(InCh.PROJECT_DIR, DFILE)
+        F = joinpath(InCh.projectdir(), DFILE)
         iscached = F == get(TCACHE, :FCACHED, nothing)
         if cache && iscached 
             return TCACHE[:DATCACHED][dk...]
