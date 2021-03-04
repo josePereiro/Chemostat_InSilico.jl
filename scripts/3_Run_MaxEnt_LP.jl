@@ -20,7 +20,8 @@ end
 ## ----------------------------------------------------------------------------
 # Load and clear DAT
 # DINDEX [Vl, D, ϵ, τ] 
-DINDEX = UJL.load_data(Dyn.procdir("dym_dat_index.bson")) # Dynamic index
+DINDEX_FILE = Dyn.procdir("dym_dat_index.bson")
+DINDEX = UJL.load_data(DINDEX_FILE) # Dynamic index
 DATA_FILE_PREFFIX = "marginal_dat"
 dat_file(;sim_params...) = 
     Dyn.procdir(UJL.mysavename(DATA_FILE_PREFFIX, "jls"; sim_params...)) 
@@ -58,7 +59,10 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
     biom_idx = M.obj_idx
     z(vatp, vg) = LP_cache[vatp][vg][biom_idx]
     
+    ## -----------------------------------------------------------
     # G BOUNDING
+
+    ## -----------------------------------------------------------
     if MEmode == ME_Z_OPEN_G_BOUNDED ||
             MEmode == ME_Z_EXPECTED_G_BOUNDED ||
             MEmode == ME_Z_FIXXED_G_BOUNDED
@@ -70,21 +74,23 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
         net.lb .= L; net.ub .= U
     end
 
+    ## -----------------------------------------------------------
+    # EXPECTED
     beta_biom = 0.0
     beta_vg = 0.0
+    maxiters = 800
+    verb_frec = 50.0
+    th = 1e-2
 
-    # EXPECTED
+    ## -----------------------------------------------------------
     if MEmode == ME_Z_EXPECTED_G_OPEN || 
             MEmode == ME_Z_EXPECTED_G_BOUNDED
-        verb_frec = 50
 
         # Gradient descent
         target = biom_avPX
         x0 = 1.5e2
         x1 = x0 * 0.9
         maxΔ = 100.0
-        th = 1e-3
-        maxiters = 500
         it = 1
 
         # grad desc
@@ -120,16 +126,13 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
 
     end
 
+    ## -----------------------------------------------------------
     if MEmode == ME_Z_EXPECTED_G_EXPECTED
-
-        verb_frec = 50
 
         target = [biom_avPX, vg_avPX]
         x0 = [100.0, -10.0]
         x1 = [101.0, -11.0]
         maxΔ = [80.0, 30.0]
-        maxiters = 500
-        th = 1e-3
         it = 1
 
         join = Dyn.get_join(M)
@@ -171,23 +174,19 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
         )
     end
 
+    ## -----------------------------------------------------------
     if MEmode == ME_Z_EXPECTED_G_MOVING
         
-        ## -----------------------------------------------------------
         # init globals
         Δstep = 0.5
-        maxiters = 50
+        maxiters = 500
         PME = nothing
         biom_avPME = 0.0
-        beta_biom = 50
         biom_err = Inf
         
         ## -----------------------------------------------------------
         last_beta = 50.0
         for rit in 1:maxiters
-
-            println("-" ^ 70)
-            @info("Int Round", rit, MEmode); println()
 
             ## -----------------------------------------------------------
             # Find biom beta
@@ -195,12 +194,11 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
             x0 = beta_biom
             x1 = x0 * 0.9
             maxΔ = 100.0
-            biom_th = 1e-3
         
             # grad desc
             it = 1
             join = Dyn.get_join(M)
-            function f1(beta)
+            function f3(beta)
 
                 PME = Dyn.get_join!(M, join) do vatp, vg
                     exp(beta * z(vatp, vg))
@@ -210,8 +208,8 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
                 end
                 
                 biom_err = abs(biom_avPX - biom_avPME)/biom_avPX
-                show_info = it == 1 || rem(it, 10) == 0 || 
-                    it == maxiters || biom_err < biom_th
+                show_info = it == 1 || rem(it, verb_frec) == 0 || 
+                    it == maxiters || biom_err < th
                 show_info && lock(WLOCK) do
                     @info("Grad Descent ", 
                         it, MEmode, 
@@ -224,8 +222,8 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
                 return biom_avPME
             end
 
-            beta_biom = UJL.grad_desc(f1; th = biom_th, 
-                target, x0, x1, maxΔ, maxiters = 50, 
+            beta_biom = UJL.grad_desc(f3; th, 
+                target, x0, x1, maxΔ, maxiters, 
                 verbose = false
             )
 
@@ -258,12 +256,15 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
                 ); println()
             end
 
-            valid_vg_avPME && biom_err < biom_th && break
+            valid_vg_avPME && biom_err < th && break
 
         end # for rit in 1:maxiters
     end
 
+    ## -----------------------------------------------------------
     # Z FIXXED
+
+    ## -----------------------------------------------------------
     if MEmode == ME_Z_FIXXED_G_OPEN || 
             MEmode == ME_Z_FIXXED_G_BOUNDED
         # Fix biomass to observable
@@ -274,6 +275,8 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
         net.lb .= L; net.ub .= U
     end
 
+    ## -----------------------------------------------------------
+    # MARGINALS
     MEMs = Dyn.get_marginals(M; δ, LP_cache, verbose = false) do vatp, vg
         exp((beta_biom * z(vatp, vg)) + (beta_vg * vg))
     end
@@ -333,14 +336,14 @@ REDO_FBA = false
 
 ## ----------------------------------------------------------------------------
 # COMPUTE MARGINALS
-INDEX = UJL.DictTree() # marginals dat
+MINDEX = UJL.DictTree() # marginals dat
 let
-    δ = INDEX[:δ]   = 0.08 # marginal discretization factor
-    δμ = INDEX[:δμ] = 0.01 # ME_Z_FIXXED_G_OPEN biomass variance
+    δ = MINDEX[:δ]   = 0.08 # marginal discretization factor
+    δμ = MINDEX[:δμ] = 0.01 # ME_Z_FIXXED_G_OPEN biomass variance
     gc = 0
 
-    INDEX[:Vls], INDEX[:Ds] = [], []
-    INDEX[:ϵs], INDEX[:τs] = [], []
+    MINDEX[:Vls], MINDEX[:Ds] = [], []
+    MINDEX[:ϵs], MINDEX[:τs] = [], []
     
     Vls, Ds, ϵs, τs = DINDEX[[:Vls, :Ds, :ϵs, :τs]]
     
@@ -369,10 +372,10 @@ let
                 
                 isnothing(LP_cache) && (LP_cache = Dyn.vgvatp_cache(M0))
 
-                push!(INDEX[:Vls], Vl); push!(INDEX[:Ds], D)
-                push!(INDEX[:ϵs], ϵ); push!(INDEX[:τs], τ)
-                INDEX[:DFILE, Vl, D, ϵ, τ] = relpath(cfile, InCh.projectdir())
-                INDEX[:STATUS, Vl, D, ϵ, τ] = status
+                push!(MINDEX[:Vls], Vl); push!(MINDEX[:Ds], D)
+                push!(MINDEX[:ϵs], ϵ); push!(MINDEX[:τs], τ)
+                MINDEX[:DFILE, Vl, D, ϵ, τ] = relpath(cfile, InCh.projectdir())
+                MINDEX[:STATUS, Vl, D, ϵ, τ] = status
                 @info("Doing $c, prog: $gc/$N ... ", 
                     (Vl, D, ϵ, τ), 
                     M0.X, status, 
@@ -393,10 +396,6 @@ let
             end
 
             ## ----------------------------------------------------------------------------
-            # Test
-            !isfile(cfile) && continue 
-            MDAT = deserialize(cfile)
-
             if isfile(cfile) # Check caches
                 if REDO_MAXENT || REDO_FBA
                     MDAT = deserialize(cfile)
@@ -523,12 +522,13 @@ let
         end # for (Vl, D, ϵ, τ) in Ch
     end #  @threads
 
-    sort!(unique!(INDEX[:Vls])); sort!(unique!(INDEX[:Ds]))
-    sort!(unique!(INDEX[:ϵs])); sort!(unique!(INDEX[:τs]))
+    sort!(unique!(MINDEX[:Vls])); sort!(unique!(MINDEX[:Ds]))
+    sort!(unique!(MINDEX[:ϵs])); sort!(unique!(MINDEX[:τs]))
 end
 
 ## ----------------------------------------------------------------------------
 # SAVING
-UJL.save_data(InCh.MARGINALS_INDEX_FILE, INDEX)
+MINDEX_FILE = Dyn.procdir("marg_dat_index.bson")
+UJL.save_data(MINDEX_FILE, MINDEX)
 
 

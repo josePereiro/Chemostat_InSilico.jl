@@ -5,7 +5,7 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
 
     import Chemostat_InSilico
     const InCh = Chemostat_InSilico
-    const InLP = InCh.LP_Implement
+    const Dyn = InCh.Dynamic
         
     using ProgressMeter
     using Plots.Measures
@@ -38,9 +38,12 @@ minmax(a) = isempty(a) ? (0.0, 0.0) : (minimum(a), maximum(a))
 
 const ME_Z_OPEN_G_OPEN          = :ME_Z_OPEN_G_OPEN           # Do not use extra constraints
 const ME_Z_OPEN_G_BOUNDED       = :ME_Z_OPEN_G_BOUNDED        # 
+
 const ME_Z_EXPECTED_G_OPEN      = :ME_Z_EXPECTED_G_OPEN       # Match ME and Dy biom average
 const ME_Z_EXPECTED_G_BOUNDED   = :ME_Z_EXPECTED_G_BOUNDED    # Match ME and Dy biom average and constraint av_ug
 const ME_Z_EXPECTED_G_EXPECTED  = :ME_Z_EXPECTED_G_EXPECTED   # 
+const ME_Z_EXPECTED_G_MOVING    = :ME_Z_EXPECTED_G_MOVING     # 
+
 const ME_Z_FIXXED_G_OPEN        = :ME_Z_FIXXED_G_OPEN         # Fix biom around observed
 const ME_Z_FIXXED_G_BOUNDED     = :ME_Z_FIXXED_G_BOUNDED      # Fix biom around observed
 
@@ -50,24 +53,38 @@ const FBA_Z_FIXXED_G_OPEN     = :FBA_Z_FIXXED_G_OPEN
 const FBA_Z_FIXXED_G_BOUNDED  = :FBA_Z_FIXXED_G_BOUNDED
 
 ALL_MODELS = [
-    ME_Z_OPEN_G_OPEN, ME_Z_OPEN_G_BOUNDED, 
-    ME_Z_EXPECTED_G_OPEN, ME_Z_EXPECTED_G_BOUNDED,
-    ME_Z_FIXXED_G_OPEN, ME_Z_FIXXED_G_BOUNDED, 
-    ME_Z_EXPECTED_G_EXPECTED,
-    FBA_Z_OPEN_G_OPEN, FBA_Z_OPEN_G_BOUNDED, 
-    FBA_Z_FIXXED_G_OPEN, FBA_Z_FIXXED_G_BOUNDED
+    # ME_Z_OPEN_G_OPEN, ME_Z_OPEN_G_BOUNDED, 
+    # ME_Z_EXPECTED_G_OPEN, 
+    ME_Z_EXPECTED_G_BOUNDED, 
+    ME_Z_EXPECTED_G_MOVING,
+    # ME_Z_FIXXED_G_OPEN, ME_Z_FIXXED_G_BOUNDED, 
+    # ME_Z_EXPECTED_G_EXPECTED,
+    # FBA_Z_OPEN_G_OPEN, FBA_Z_OPEN_G_BOUNDED, 
+    # FBA_Z_FIXXED_G_OPEN, FBA_Z_FIXXED_G_BOUNDED
 ]
 
-MOD_COLORS = let
-    colors = Plots.distinguishable_colors(length(ALL_MODELS))
-    Dict(mod => color for (mod, color) in zip(ALL_MODELS, colors))
-end
+MOD_COLORS = Dict(
+    ME_Z_OPEN_G_OPEN        => :brown, 
+    ME_Z_OPEN_G_BOUNDED     => :orange, 
+    ME_Z_EXPECTED_G_OPEN    => :red, 
+    ME_Z_EXPECTED_G_BOUNDED => :blue,
+    ME_Z_EXPECTED_G_MOVING => :purple,
+    ME_Z_FIXXED_G_OPEN      => :green, 
+    ME_Z_FIXXED_G_BOUNDED   => :pink, 
+    ME_Z_EXPECTED_G_EXPECTED   => :violet, 
+
+    FBA_Z_OPEN_G_OPEN       => :dot, 
+    FBA_Z_OPEN_G_BOUNDED    => :dot, 
+    FBA_Z_FIXXED_G_OPEN     => :dot, 
+    FBA_Z_FIXXED_G_BOUNDED  => :dot,
+)
 
 MOD_LS = Dict(
     ME_Z_OPEN_G_OPEN        => :dash, 
     ME_Z_OPEN_G_BOUNDED     => :dash, 
     ME_Z_EXPECTED_G_OPEN    => :dash, 
     ME_Z_EXPECTED_G_BOUNDED => :dash,
+    ME_Z_EXPECTED_G_MOVING => :dash,
     ME_Z_FIXXED_G_OPEN      => :dash, 
     ME_Z_FIXXED_G_BOUNDED   => :dash, 
     ME_Z_EXPECTED_G_EXPECTED   => :dash, 
@@ -85,14 +102,15 @@ MOD_LS = Dict(
 # MDAT[MODsym, :Ms, Vl, D, ϵ, τ]
 # MDAT[MODsym, :beta_biom, Vl, D, ϵ, τ]
 # MDAT[:STATUS, Vl, D, ϵ]
-MINDEX = UJL.load_data(InCh.MARGINALS_INDEX_FILE)
+MINDEX_FILE = Dyn.procdir("marg_dat_index.bson")
+MINDEX = UJL.load_data(MINDEX_FILE)
 EXP_PARAMS = Iterators.product(MINDEX[[:Vls, :Ds, :ϵs, :τs]]...)
-idxdat(dk, indexks...) = InLP.idxdat(MINDEX, dk, indexks...)
+idxdat(dk, indexks...) = Dyn.idxdat(MINDEX, dk, indexks...)
 
 ## ----------------------------------------------------------------------------
 # PLOTS
 mysavefig(p, pname; params...) = 
-    InLP.mysavefig(p, pname, InLP.DYN_FIGURES_DIR, fileid; params...)
+    Dyn.mysavefig(p, pname, Dyn.plotsdir(), fileid; params...)
 
 ## ----------------------------------------------------------------------------
 # Plot functions
@@ -122,7 +140,7 @@ function plot_marginals!(p, MODsyms, rxn, Vl, D, ϵ, τ; draw_av = true, sparams
     DyMs = idxdat([:DyMs], Vl, D, ϵ, τ)
     plot!(p, DyMs[rxn]; label = "", sparams..., color = :black)
     if draw_av
-        av = InLP.av(DyMs[rxn])
+        av = Dyn.av(DyMs[rxn])
         vline!(p, [av]; label = "", sparams..., 
             color = :black, ls = :solid, lw = 5, alpha = 0.6
         )
@@ -135,7 +153,7 @@ function plot_marginals!(p, MODsyms, rxn, Vl, D, ϵ, τ; draw_av = true, sparams
         Ms = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
         plot!(p, Ms[rxn]; label = "", color, ls, sparams...)
         if draw_av
-            av = InLP.av(Ms[rxn])
+            av = Dyn.av(Ms[rxn])
             vline!(p, [av]; label = "", color, sparams..., 
                 ls = :solid, lw = 5, alpha = 0.6
             )
@@ -167,13 +185,13 @@ let
         
         # COMPUTE
         f(vatp, vg) = M.Xb[vatp][vg] / M.X
-        av_z = InLP.av(DyMs["biom"])
+        av_z = Dyn.av(DyMs["biom"])
         μ = av_z - M.σ
         growth_bal = (μ - D)/D
         biom_prod = μ * M.X
         bioms_drain = D * M.X
 
-        av_vg = InLP.av(DyMs["gt"])
+        av_vg = Dyn.av(DyMs["gt"])
         cD_X = M.cg * M.D / M.X
         glc_bal = (-av_vg * M.X + (M.cg - M.sg) * M.D) / (M.cg * M.D)
         glc_in = M.cg * M.D
@@ -234,7 +252,6 @@ let
     Ds = MINDEX[:Ds] |> sort
     ϵs = MINDEX[:ϵs] |> sort
 
-    # MODELS = [ME_BOUNDED, ME_CUTTED, ME_EXPECTED, ME_Z_OPEN_G_OPEN, FBA_BOUNDED, FBA_OPEN]
     ps = Plots.Plot[]
     M = -Inf
     for MODsym in ALL_MODELS
@@ -251,9 +268,9 @@ let
                 DyMs = idxdat([:DyMs], Vl, D, ϵ, τ)
                 Ms = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
                 
-                for rxn in InLP.RXNS
-                    DYN_flx = InLP.av(DyMs[rxn])
-                    ME_flx = InLP.av(Ms[rxn])
+                for rxn in Dyn.RXNS
+                    DYN_flx = Dyn.av(DyMs[rxn])
+                    ME_flx = Dyn.av(Ms[rxn])
                     (isnan(DYN_flx) || isnan(ME_flx)) && continue
 
                     err = ((DYN_flx - ME_flx)^2)/abs(DYN_flx)
@@ -292,14 +309,12 @@ end
 ## ----------------------------------------------------------------------------
 # all Marginals
 let
-    # MODELS = [ME_BOUNDED, ME_EXPECTED, ME_Z_OPEN_G_OPEN, FBA_BOUNDED, FBA_OPEN]
-    # MODELS = [ME_EXPECTED, ME_CUTTED, ME_Z_OPEN_G_OPEN, FBA_BOUNDED]
 
     for (Vl, D, ϵ, τ) in EXP_PARAMS
         MINDEX[:STATUS, Vl, D, ϵ, τ] != :stst && continue
         ps = Plots.Plot[]
         sparams =(;ylim = [0.0, Inf], lw = 4)
-        gparams = (xaxis = nothing, yaxis = nothing, grid = false)
+        gparams = (;xaxis = nothing, yaxis = nothing, grid = false)
         for rxn in ["vatp", "gt", "biom"]
             p = plot(;title = rxn, xlabel = "flx", ylabel = "prob", gparams...)
             for  MODsym in ALL_MODELS
@@ -310,10 +325,10 @@ let
 
         # LEGEND
         p = plot(;title = "Legend", xaxis = nothing, yaxis = nothing)
-        for  MODsym in ALL_MODELS
+        for  (i, MODsym) in ALL_MODELS |> enumerate
             ls = MOD_LS[MODsym] 
             color = MOD_COLORS[MODsym]
-            plot!(p, rand(3); label = string(MODsym), color, ls, lw = 8)        
+            plot!(p, fill(i, 3); label = string(MODsym), color, ls, lw = 8)        
         end
         push!(ps, p)
         
@@ -321,7 +336,7 @@ let
     end
 end
 
-# ## ----------------------------------------------------------------------------
+## ----------------------------------------------------------------------------
 # let
 
 #     params = EXP_PARAMS |> collect
@@ -341,11 +356,11 @@ end
 
 #         # RECOMPUTE MARGINALS
 #         M0 = idxdat([:M0], Vl, D, ϵ, τ)
-#         LP_cache = isnothing(LP_cache) ? InLP.vgvatp_cache(M0) : LP_cache
+#         LP_cache = isnothing(LP_cache) ? Dyn.vgvatp_cache(M0) : LP_cache
 #         MDAT = deserialize(cfile)
 
 #         @info("Dynamic") 
-#         MDAT[:DyMs] = InLP.get_marginals(M0; δ, LP_cache, verbose = false) do vatp, vg
+#         MDAT[:DyMs] = Dyn.get_marginals(M0; δ, LP_cache, verbose = false) do vatp, vg
 #             M0.Xb[vatp][vg] / M0.X
 #         end
 
@@ -362,7 +377,7 @@ end
             
 #             @info("EP", MODsym, beta_biom, beta_vg)
 #             z(vatp, vg) = LP_cache[vatp][vg][M.obj_idx]
-#             MDAT[MODsym, :Ms] = InLP.get_marginals(M; δ, LP_cache, verbose = false) do vatp, vg
+#             MDAT[MODsym, :Ms] = Dyn.get_marginals(M; δ, LP_cache, verbose = false) do vatp, vg
 #                 exp((beta_biom * z(vatp, vg)) + (beta_vg * vg))
 #             end
 #         end
@@ -377,7 +392,7 @@ end
 #             @info("FBA", MODsym)
 #             # FBA
 #             # Find maximum feasible vatp
-#             vatp_range, vg_ranges = InLP.vatpvg_ranges(M)
+#             vatp_range, vg_ranges = Dyn.vatpvg_ranges(M)
 #             max_vatp = -Inf
 #             min_vg = Inf
 #             # (max_vatp, min_vg) will maximize the yield
@@ -392,17 +407,17 @@ end
 #             @assert !isinf(max_vatp)
 
 #             fbaf(vatp, vg) = (vatp == max_vatp && vg == min_vg) ? 1.0 : 0.0
-#             MDAT[MODsym, :Ms] = InLP.get_marginals(fbaf, M; δ, LP_cache, verbose = false)
+#             MDAT[MODsym, :Ms] = Dyn.get_marginals(fbaf, M; δ, LP_cache, verbose = false)
 #         end
 
 
 #         # SAVING
 #         serialize(cfile, MDAT)
-#         InLP.idxdat(;emptytcache = true)
+#         Dyn.idxdat(;emptytcache = true)
         
 #         # # TEST
 #         # rxn = "biom"
-#         # InLP.idxdat(;emptytcache = true)
+#         # Dyn.idxdat(;emptytcache = true)
 #         # p = plot(;title = rxn, xlabel = "flx", ylabel = "prob")
 #         # plot_marginals!(p, ALL_MODELS, rxn, Vl, D, ϵ, τ)
 #         # mysavefig(p, "test")
@@ -419,7 +434,8 @@ let
         # ME_Z_OPEN_G_BOUNDED, 
         # ME_Z_EXPECTED_G_OPEN, 
         ME_Z_EXPECTED_G_BOUNDED,
-        # ME_Z_EXPECTED_G_EXPECTED,
+        :ME_Z_EXPECTED_G_MOVING,
+        ME_Z_EXPECTED_G_EXPECTED,
         # ME_Z_FIXXED_G_OPEN, 
         # ME_Z_FIXXED_G_BOUNDED, 
         # FBA_Z_OPEN_G_OPEN, 
@@ -427,6 +443,7 @@ let
         # FBA_Z_FIXXED_G_OPEN, 
         # FBA_Z_FIXXED_G_BOUNDED
     ]
+    MODELS = ALL_MODELS
 
     # LEGEND PLOT
     leg_p = plot(;title = "Legend", xaxis = nothing, yaxis = nothing)
@@ -457,11 +474,11 @@ let
         
         # POLYTOPE
         p = plot(;title = "polytope", xlabel = "vatp", ylabel = "vg")
-        InLP.plot_polborder!(p, M)
-        InLP.plot_poldist!(p, M)
+        Dyn.plot_polborder!(p, M)
+        Dyn.plot_poldist!(p, M)
         DyMs = idxdat([:DyMs], Vl, D, ϵ, τ)
-        vatp_av = InLP.av(DyMs["vatp"]) 
-        vg_av = InLP.av(DyMs["gt"]) 
+        vatp_av = Dyn.av(DyMs["vatp"]) 
+        vg_av = Dyn.av(DyMs["gt"]) 
 
         kwargs = (;alpha = 0.5, label = "", color = :black)
         hline!(p, [vg_av]; lw = 5, ls = :dash, kwargs...)
@@ -548,7 +565,7 @@ let
             MINDEX[:STATUS, Vl, D, ϵ, τ] != :stst && continue
             DyMs = idxdat([:DyMs], Vl, D, ϵ, τ)
             
-            vatp = InLP.av(DyMs["vatp"])
+            vatp = Dyn.av(DyMs["vatp"])
             push!(xs, D) 
             push!(ys, vatp) 
         end
@@ -579,7 +596,7 @@ let
             )
             
             color = MOD_COLORS[MODsym]
-            arr = Vector{Float64}(undef, length(sim_params) * length(InLP.RXNS))
+            arr = Vector{Float64}(undef, length(sim_params) * length(Dyn.RXNS))
             DYN_flxs, DYN_errs = arr, copy(arr)
             M_flxs, M_errs = copy(arr), copy(arr)
             
@@ -590,11 +607,11 @@ let
                 DyMs = idxdat([:DyMs], Vl, D, ϵ, τ)
                 Ms = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
                 
-                for rxn in InLP.RXNS
-                    DYN_flx = InLP.av(DyMs[rxn])
-                    DYN_err = InLP.va(DyMs[rxn]) |> sqrt
-                    ME_flx = InLP.av(Ms[rxn])
-                    ME_err = InLP.va(Ms[rxn]) |> sqrt
+                for rxn in Dyn.RXNS
+                    DYN_flx = Dyn.av(DyMs[rxn])
+                    DYN_err = Dyn.va(DyMs[rxn]) |> sqrt
+                    ME_flx = Dyn.av(Ms[rxn])
+                    ME_err = Dyn.va(Ms[rxn]) |> sqrt
                     (isnan(DYN_flx) || isnan(ME_flx)) && continue
 
                     push!(DYN_flxs, DYN_flx)
@@ -702,7 +719,7 @@ let
         
         for flx in FLXS
             
-            dym_vatp = InLP.av(DyMs[flx])
+            dym_vatp = Dyn.av(DyMs[flx])
             # dym_vatp = rand() # Test
 
             for MODsym in ALL_MODELS
@@ -712,7 +729,7 @@ let
                 get!(dat, :colors, [])
 
                 Ms = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
-                m_vatp = InLP.av(Ms[flx])
+                m_vatp = Dyn.av(Ms[flx])
                 # m_vatp = rand() # Test
 
                 push!(dat[:xs], dym_vatp)
