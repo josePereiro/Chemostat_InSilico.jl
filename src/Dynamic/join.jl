@@ -14,6 +14,7 @@ function get_join!(f, M, join::Dict{Float64, Dict{Float64, Float64}})
         end
     end
     @assert Z > 0.0
+    @assert Z < Inf
 
     # NORMALIZING
     for (vatpi, vatp) in enumerate(vatp_range)
