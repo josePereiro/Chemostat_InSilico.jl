@@ -10,7 +10,7 @@ function mysavefig(ps::Vector, pname, dir, id;
         margin = 10, params...
     )
     pname = UJL.mysavename(pname, "png"; params...)
-    fname = joinpath(dir, string(id, "_", pname))
+    fname = joinpath(dir, string(id, "-", pname))
     grid = UJL.make_grid(ps; layout, margin)
     FileIO.save(fname, grid)
     @info "Plotting" fname

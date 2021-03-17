@@ -39,3 +39,16 @@ function ave_over(f::Function, P)
     end
     ave
 end
+
+## ----------------------------------------------------------------------------
+function entropy(P)
+    H = 0.0
+    for (vatp, mP) in P
+        for (vg, p) in mP
+            iszero(p) && continue
+            H += p * log2(p)
+        end
+    end
+    @assert !isnan(H)
+    -H
+end

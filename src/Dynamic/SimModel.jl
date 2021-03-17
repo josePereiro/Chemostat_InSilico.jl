@@ -65,7 +65,8 @@ mutable struct SimModel
             complete_board!(Xb, i_vatp_range, vg_ranges, Xi)
         end    
         
-        new(
+        
+        M = new(
             net, vatp_idx, vg_idx, vl_idx, obj_idx, 
             δvatp, δvg, 
             cg, Vg, 
@@ -74,10 +75,16 @@ mutable struct SimModel
             Δt, niters,
             D0, sg0, sl0, X0, Xb
         )
+        check_params(M)
+        return M
     end
 end
 
 Base.merge!(M1, M2) = foreach((f) -> setfield!(M1, f, getfield(M2, f)), fieldnames(SimModel))
+function Base.hash(M::SimModel)
+    fs = filter(!isequal(:Xb), fieldnames(typeof(M)))
+    hash(string(getproperty.([M], fs)))
+end
 
 vatpvgN(Xb) = sum(length.(values(Xb)))
 vatpvgN(M::SimModel) = vatpvgN(M.Xb)
@@ -105,4 +112,36 @@ function plot_box_grid(M::SimModel)
     vatp_range = vrange(vatpL, vatpU, M.δvatp)
     vg_range = vrange(vgL, vgU, M.δvg)
     vatp_range, vg_range
+end
+
+
+const CG_MAX_BOUNDS = (0.0, 15.0)
+const VG_MAX_BOUNDS = (0.5, 0.5)
+const CL_MAX_BOUNDS = (0.0, 0.0)
+const VL_MAX_BOUNDS = (0.0, 0.0)
+const D_MAX_BOUNDS = (0.0, 0.05)
+const X_MAX_BOUNDS = (0.01, 5.0)
+const REF_METNET = ToyModel()
+
+function check_params(M)
+
+    # field
+    for (field, (lb, ub)) in [
+            (:cg, CG_MAX_BOUNDS), (:Vg, VG_MAX_BOUNDS),
+            (:cl, CL_MAX_BOUNDS), (:Vl, VL_MAX_BOUNDS),
+            (:D, D_MAX_BOUNDS), (:X, X_MAX_BOUNDS),
+        ]
+        val = getproperty(M, field)
+        !(lb <= val <= ub) && error(
+            string(field, "=", val, ", It must be between ", (lb, ub))
+        )
+    end
+
+    # net
+    for rxni in eachindex(REF_METNET.rxns)
+        (REF_METNET.lb[rxni] > M.net.lb[rxni] || REF_METNET.ub[rxni] < M.net.ub[rxni]) && error(
+            string(M.net.rxns[rxni], " bounds=", (M.net.lb[rxni], M.net.ub[rxni]), 
+            ", It must be between ", (REF_METNET.lb[rxni] , REF_METNET.ub[rxni]))
+        )
+    end
 end
