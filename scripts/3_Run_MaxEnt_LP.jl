@@ -38,6 +38,7 @@ const ME_Z_OPEN_G_BOUNDED       = :ME_Z_OPEN_G_BOUNDED        #
 
 const ME_Z_EXPECTED_G_OPEN      = :ME_Z_EXPECTED_G_OPEN       # Match ME and Dy biom average
 const ME_Z_EXPECTED_G_EXPECTED  = :ME_Z_EXPECTED_G_EXPECTED   # 
+const ME_FULL_POLYTOPE          = :ME_FULL_POLYTOPE           # 
 const ME_Z_EXPECTED_G_MOVING    = :ME_Z_EXPECTED_G_MOVING     # 
 const ME_Z_EXPECTED_G_BOUNDED   = :ME_Z_EXPECTED_G_BOUNDED    # Match ME and Dy biom average and constraint av_ug
 
@@ -49,167 +50,308 @@ const FBA_Z_OPEN_G_BOUNDED    = :FBA_Z_OPEN_G_BOUNDED
 const FBA_Z_FIXXED_G_OPEN     = :FBA_Z_FIXXED_G_OPEN 
 const FBA_Z_FIXXED_G_BOUNDED  = :FBA_Z_FIXXED_G_BOUNDED
 
-
 ## ----------------------------------------------------------------------------
 function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
     
     thid = threadid()
 
-    # biomass rate
+    ## -----------------------------------------------------------
+    # Globals
+    cgD_X = M.cg * M.D/ M.X
     biom_idx = M.obj_idx
     z(vatp, vg) = LP_cache[vatp][vg][biom_idx]
+    vg(vatp, vg) = vg
     
     ## -----------------------------------------------------------
     # G BOUNDING
 
     ## -----------------------------------------------------------
-    if MEmode == ME_Z_OPEN_G_BOUNDED ||
-            MEmode == ME_Z_EXPECTED_G_BOUNDED ||
-            MEmode == ME_Z_FIXXED_G_BOUNDED
+    ismode = MEmode in [ME_Z_OPEN_G_BOUNDED, ME_Z_EXPECTED_G_BOUNDED, ME_Z_FIXXED_G_BOUNDED]
+    ismode && let
         # Fix av_ug
         net = M.net
-        net.ub[M.vg_idx] = min(M.Vg, M.cg * M.D/ M.X)
-        net.ub[M.vl_idx] = min(M.Vl, M.cl * M.D/ M.X)
+        net.ub[M.vg_idx] = min(M.Vg, cgD_X)
+        net.ub[M.vl_idx] = min(M.Vl, cgD_X)
+        L, U = Dyn.fva(net)
+        net.lb .= L; net.ub .= U
+    end
+
+    ## -----------------------------------------------------------
+    # Z FIXXED
+
+    ## -----------------------------------------------------------
+    ismode = MEmode in [ME_Z_FIXXED_G_OPEN, ME_Z_FIXXED_G_BOUNDED]
+    ismode && let
+        # Fix biomass to observable
+        net = M.net
+        net.ub[M.obj_idx] = biom_avPX * (1.0 + δμ)
+        net.lb[M.obj_idx] = biom_avPX * (1.0 - δμ)
         L, U = Dyn.fva(net)
         net.lb .= L; net.ub .= U
     end
 
     ## -----------------------------------------------------------
     # EXPECTED
+    
+    ## -----------------------------------------------------------
+    # Globals
     beta_biom = 0.0
     beta_vg = 0.0
-    maxiters = 800
+    maxiter = 800
     verb_frec = 50.0
-    th = 1e-2
+    gdth = 1e-2
 
     ## -----------------------------------------------------------
-    if MEmode == ME_Z_EXPECTED_G_OPEN || 
-            MEmode == ME_Z_EXPECTED_G_BOUNDED
-
+    ismode = MEmode in [ME_Z_EXPECTED_G_OPEN, ME_Z_EXPECTED_G_BOUNDED]
+    ismode && let
         # Gradient descent
         target = biom_avPX
         x0 = 1.5e2
         x1 = x0 * 0.9
-        maxΔ = 100.0
-        it = 1
+        maxΔx = 100.0
+        gdit = 1
 
         # grad desc
         join = Dyn.get_join(M)
-        function f1(beta_biom)
+        function f1(gdmodel)
+            
+            beta_biom = UJL.gd_value(gdmodel)
 
             PME = Dyn.get_join!(M, join) do vatp, vg
                 exp(beta_biom * z(vatp, vg))
             end
-            biom_avPME = Dyn.ave_over(PME) do vatp, vg
-                z(vatp, vg)
-            end
+            biom_avPME = Dyn.ave_over(z, PME)
             
-            err = abs(biom_avPX - biom_avPME)/biom_avPX
-            show_info = it == 1 || rem(it, verb_frec) == 0 || 
-                it == maxiters || err < th
+            biom_err = gdmodel.ϵi
+            show_info = gdit == 1 || rem(gdit, verb_frec) == 0 || 
+                gdit == maxiter || biom_err < gdth
             show_info && lock(WLOCK) do
                 @info("Grad Descent ", 
-                    it, MEmode, 
+                    gdit, MEmode, 
                     (biom_avPX, biom_avPME), 
-                    err, beta_biom, thid
+                    biom_err, beta_biom, thid
                 ); println()
             end
 
-            it += 1
+            gdit += 1
             return biom_avPME
         end
 
-        beta_biom = UJL.grad_desc(f1; th, 
-            target, x0, x1, maxΔ, maxiters, 
+        gdmodel = UJL.grad_desc(f1; gdth, 
+            target, x0, x1, maxΔx, maxiter, 
             verbose = false
         )
-
+        beta_biom = UJL.gd_value(gdmodel)
     end
 
     ## -----------------------------------------------------------
-    if MEmode == ME_Z_EXPECTED_G_EXPECTED
-
+    ismode = MEmode == ME_Z_EXPECTED_G_EXPECTED
+    ismode && let
         target = [biom_avPX, vg_avPX]
         x0 = [100.0, -10.0]
         x1 = [101.0, -11.0]
-        maxΔ = [80.0, 30.0]
-        it = 1
+        maxΔx = [80.0, 30.0]
+        gdit = 1
 
         join = Dyn.get_join(M)
-        function f2(betas)
-            beta_biom, vg_beta = betas
-            PME = Dyn.get_join!(M, join) do vatp, vg
-                v = [z(vatp, vg), vg]
-                exp(betas' * v)
+        function up_fun!(gdmodel)
+
+            beta_biom, beta_vg = UJL.gd_value(gdmodel)
+            PME = Dyn.get_join!(M, join) do vatp_, vg_
+                exp(beta_biom * z(vatp_, vg_) + beta_vg * vg(vatp_, vg_))
             end
-            biom_avPME = Dyn.ave_over(PME) do vatp, vg
-                z(vatp, vg)
-            end
-            vg_avPME = Dyn.ave_over(PME) do vatp, vg
-                vg
-            end
+            biom_avPME = Dyn.ave_over(z, PME)
+            vg_avPME = Dyn.ave_over(vg, PME)
             
             biom_err = abs(biom_avPX - biom_avPME)/biom_avPX
             vg_err = abs(vg_avPX - vg_avPME)/vg_avPX
             err = max(biom_err, vg_err)
-            show_info = it == 1 || rem(it, verb_frec) == 0 || 
-                it == maxiters || err < th
+
+            show_info = gdit == 1 || rem(gdit, verb_frec) == 0 || 
+                gdit == maxiter || err < gdth
             show_info && lock(WLOCK) do
                 @info("Grad Descent ", 
-                    it, MEmode, 
+                    gdit, MEmode, 
                     (biom_avPX, biom_avPME),
                     (vg_avPX, vg_avPME),
-                    err, beta_biom, vg_beta, 
+                    err, beta_biom, beta_vg, 
                     thid
                 ); println()
             end
 
-            it += 1
+            gdit += 1
             return [biom_avPME, vg_avPME]
         end
 
-        beta_biom, beta_vg = UJL.grad_desc_vec(f2; 
-            target, x0, x1, maxΔ, th, maxiters, 
+        gdmodel = UJL.grad_desc_vec(up_fun!; 
+            target, x0, x1, maxΔx, gdth, maxiter, 
             verbose = false
         )
+        beta_biom, beta_vg = UJL.gd_value(gdmodel)
     end
 
     ## -----------------------------------------------------------
-    if MEmode == ME_Z_EXPECTED_G_MOVING
-        
+    ismode = MEmode == ME_FULL_POLYTOPE
+    ismode && let
+        topiter = 1
+        join = Dyn.get_join(M)
+        stth, stw = 0.1, 8
+        betas_biom, betas_vg = [beta_biom], [beta_vg]
+        biom_avPME, vg_avPME = 0.0, 0.0
+
+        while true
+
+            ## -----------------------------------------------------------------------------------------------
+            # find z_beta⁰
+            # Gradient descent
+            target = biom_avPX
+            x0 = beta_biom
+            maxΔx = max(100.0, abs(beta_biom) * 0.1)
+            x1 = x0 + maxΔx * 0.1
+
+            function z_fun(gdmodel)
+
+                gditer = gdmodel.iter
+                beta_biom = UJL.gd_value(gdmodel)
+
+                PME = Dyn.get_join!(M, join) do vatp_, vg_
+                    exp(beta_biom * z(vatp_, vg_) + beta_vg * vg(vatp_, vg_))
+                end
+                biom_avPME = Dyn.ave_over(z, PME)
+                
+                err = gdmodel.ϵi
+                show_info = gditer == 1 || rem(gditer, verb_frec) == 0 || 
+                    gditer == maxiter || err < gdth
+                show_info && begin
+                    @info("z grad Descent ", 
+                        topiter, gditer, 
+                        MEmode, 
+                        (biom_avPX, biom_avPME), 
+                        err, beta_biom, thid
+                    ); println()
+                end
+
+                return biom_avPME 
+            end
+
+            gdmodel = UJL.grad_desc(z_fun; gdth, 
+                target, x0, x1, maxΔx, 
+                maxiter, verbose = false
+            )
+            beta_biom = UJL.gd_value(gdmodel)
+            
+            ## -----------------------------------------------------------------------------------------------
+            # Check balance at beta_vg = 0.0
+            PME = Dyn.get_join!(M, join) do vatp_, vg_
+                beta_vg_ = 0.0
+                exp(beta_biom * z(vatp_, vg_) + beta_vg_ * vg(vatp_, vg_))
+            end
+            vg_avPME_at_b0 = Dyn.ave_over(PME) do vatp_, vg_
+                vg(vatp_, vg_)
+            end
+            vg_valid_at_b0 = vg_avPME_at_b0 <= cgD_X
+
+            ## -----------------------------------------------------------------------------------------------
+            # if not valid, move beta_vg
+            if vg_valid_at_b0
+                beta_vg = 0.0
+            else
+                # Gradient descent
+                target = cgD_X * (1.0 - gdth)
+                x0 = beta_vg
+                maxΔx = max(10.0, abs(beta_vg) * 0.1)
+                x1 = x0 + maxΔx * 0.1
+                
+                function vg_fun(gdmodel)
+
+                    gditer = gdmodel.iter
+                    beta_vg = UJL.gd_value(gdmodel)
+
+                    PME = Dyn.get_join!(M, PME) do vatp_, vg_
+                        exp(beta_biom * z(vatp_, vg_) + beta_vg * vg(vatp_, vg_))
+                    end
+                    vg_avPME = Dyn.ave_over(vg, PME)
+                    
+                    err = gdmodel.ϵi
+                    show_info = gditer == 1 || rem(gditer, verb_frec) == 0 || 
+                        gditer == maxiter || err < gdth
+                    show_info && begin
+                        @info("vg grad descent ", 
+                            topiter, gditer,  
+                            MEmode, 
+                            (cgD_X, vg_avPME), 
+                            err, beta_biom, thid
+                        ); println()
+                    end
+
+                    return vg_avPME 
+                end
+
+                gdmodel = UJL.grad_desc(vg_fun; gdth, 
+                    target, x0, x1, maxΔx, 
+                    maxiter, verbose = false
+                )
+                beta_vg = UJL.gd_value(gdmodel)
+            end
+
+            push!(betas_biom, beta_biom); push!(betas_vg, beta_vg)
+
+            conv = (vg_valid_at_b0 && gdmodel.ϵi < gdth) || 
+                (UJL.is_stationary(betas_biom, stth, stw) && UJL.is_stationary(betas_vg, stth, stw))
+            
+            @info("Finished Round", 
+                topiter, conv,
+                MEmode,
+                (beta_biom, beta_vg),
+                (vg_avPME, cgD_X),
+                (vg_avPME_at_b0, cgD_X),
+                (biom_avPME, biom_avPX),
+                thid
+            ); println()
+
+            conv && break
+            
+            topiter += 1
+            topiter > maxiter && break
+        end
+    end
+
+    ## -----------------------------------------------------------
+    ismode = MEmode == ME_Z_EXPECTED_G_MOVING
+    ismode && let
+
         # init globals
         Δstep = 0.5
-        maxiters = 500
+        maxiter = 500
         PME = nothing
         biom_avPME = 0.0
         biom_err = Inf
         
         ## -----------------------------------------------------------
         last_beta = 50.0
-        for rit in 1:maxiters
+        for rit in 1:maxiter
 
             ## -----------------------------------------------------------
             # Find biom beta
             target = biom_avPX
             x0 = beta_biom
             x1 = x0 * 0.9
-            maxΔ = 100.0
+            maxΔx = 100.0
         
             # grad desc
             it = 1
             join = Dyn.get_join(M)
-            function f3(beta)
+            function up_fun!(gdmodel)
+                beta = UJL.gd_value(gdmodel)
 
                 PME = Dyn.get_join!(M, join) do vatp, vg
                     exp(beta * z(vatp, vg))
                 end
-                biom_avPME = Dyn.ave_over(PME) do vatp, vg
-                    z(vatp, vg)
-                end
+                biom_avPME = Dyn.ave_over(z, PME)
                 
-                biom_err = abs(biom_avPX - biom_avPME)/biom_avPX
+                biom_err = gdmodel.ϵi
                 show_info = it == 1 || rem(it, verb_frec) == 0 || 
-                    it == maxiters || biom_err < th
+                    it == maxiter || biom_err < gdth
                 show_info && lock(WLOCK) do
                     @info("Grad Descent ", 
                         it, MEmode, 
@@ -222,17 +364,15 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
                 return biom_avPME
             end
 
-            beta_biom = UJL.grad_desc(f3; th, 
-                target, x0, x1, maxΔ, maxiters, 
+            gdmodel = UJL.grad_desc(up_fun!; gdth, 
+                target, x0, x1, maxΔx, maxiter, 
                 verbose = false
             )
+            beta_biom = UJL.gd_value(gdmodel)
 
             ## -----------------------------------------------------------
             # move vg
-            cgD_X = M.cg * M.D / M.X
-            vg_avPME = Dyn.ave_over(PME) do vatp, vg
-                vg
-            end
+            vg_avPME = Dyn.ave_over(vg, PME)
         
             Δ = cgD_X - vg_avPME
             net = M.net
@@ -256,29 +396,16 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
                 ); println()
             end
 
-            valid_vg_avPME && biom_err < th && break
+            conv = valid_vg_avPME && biom_err < gdth
+            conv &&break
 
-        end # for rit in 1:maxiters
-    end
-
-    ## -----------------------------------------------------------
-    # Z FIXXED
-
-    ## -----------------------------------------------------------
-    if MEmode == ME_Z_FIXXED_G_OPEN || 
-            MEmode == ME_Z_FIXXED_G_BOUNDED
-        # Fix biomass to observable
-        net = M.net
-        net.ub[M.obj_idx] = biom_avPX * (1.0 + δμ)
-        net.lb[M.obj_idx] = biom_avPX * (1.0 - δμ)
-        L, U = Dyn.fva(net)
-        net.lb .= L; net.ub .= U
+        end # for rit in 1:maxiter
     end
 
     ## -----------------------------------------------------------
     # MARGINALS
-    MEMs = Dyn.get_marginals(M; δ, LP_cache, verbose = false) do vatp, vg
-        exp((beta_biom * z(vatp, vg)) + (beta_vg * vg))
+    MEMs = Dyn.get_marginals(M; δ, LP_cache, verbose = false) do vatp_, vg_
+        exp((beta_biom * z(vatp_, vg_)) + (beta_vg * vg(vatp_, vg_)))
     end
     return MEMs, beta_biom, beta_vg
 end
@@ -287,8 +414,8 @@ end
 function run_FBA!(M, FBAmode; LP_cache, δ, δμ, biom_avPX, verbose = true)
 
     # Z FIXXED
-    if FBAmode == FBA_Z_FIXXED_G_OPEN || 
-            FBAmode == FBA_Z_FIXXED_G_BOUNDED
+    ismode = FBAmode in [FBA_Z_FIXXED_G_OPEN, FBA_Z_FIXXED_G_BOUNDED]
+    ismode && let
         # Fix biomass to observable
         net = M.net
         net.ub[M.obj_idx] = biom_avPX * (1.0 + δμ)
@@ -298,8 +425,8 @@ function run_FBA!(M, FBAmode; LP_cache, δ, δμ, biom_avPX, verbose = true)
     end
 
     # G BOUNDING
-    if FBAmode == FBA_Z_OPEN_G_BOUNDED ||
-            FBAmode == FBA_Z_FIXXED_G_BOUNDED
+    ismode = FBAmode in [FBA_Z_OPEN_G_BOUNDED, FBA_Z_FIXXED_G_BOUNDED]
+    ismode && let
         # Fix av_ug
         net = M.net
         net.ub[M.vg_idx] = min(M.Vg, M.cg * M.D/ M.X)
@@ -434,44 +561,45 @@ let
             # MaxEnt marginals
             for MEmode in [ 
                     # ME_Z_OPEN_G_OPEN, ME_Z_OPEN_G_BOUNDED, 
-                    ME_Z_EXPECTED_G_OPEN, 
-                    ME_Z_EXPECTED_G_BOUNDED,
-                    ME_Z_EXPECTED_G_MOVING,
+                    # ME_Z_EXPECTED_G_OPEN, 
+                    ME_FULL_POLYTOPE,
+                    # ME_Z_EXPECTED_G_BOUNDED,
+                    # ME_Z_EXPECTED_G_MOVING,
                     # ME_Z_FIXXED_G_OPEN, ME_Z_FIXXED_G_BOUNDED, 
                     # ME_Z_EXPECTED_G_EXPECTED
                 ]
 
                 isfile(cfile) && !REDO_MAXENT && break
 
-                    # Setup network
-                    M = deepcopy(M0)
-                    
-                    MEMs, beta_biom, beta_vg = run_ME!(M, MEmode; 
-                        LP_cache, δ, δμ, 
-                        biom_avPX, vg_avPX
-                    )
-                    biom_avPME = Dyn.av(MEMs[Dyn.BIOMASS_IDER]) # biomass dynamic mean
-                    vg_avPME = Dyn.av(MEMs["gt"]) # biomass dynamic mean
+                # Setup network
+                M = deepcopy(M0)
+                
+                MEMs, beta_biom, beta_vg = run_ME!(M, MEmode; 
+                    LP_cache, δ, δμ, 
+                    biom_avPX, vg_avPX
+                )
+                biom_avPME = Dyn.av(MEMs[Dyn.BIOMASS_IDER]) # biomass dynamic mean
+                vg_avPME = Dyn.av(MEMs["gt"]) # biomass dynamic mean
 
-                    # Ranges
-                    vatp_range, vg_ranges = Dyn.vatpvg_ranges(M)
+                # Ranges
+                vatp_range, vg_ranges = Dyn.vatpvg_ranges(M)
 
-                    lock(WLOCK) do
-                        MDAT[MEmode, :M] = M
-                        MDAT[MEmode, :Ms] = MEMs
-                        MDAT[MEmode, :beta_biom] = beta_biom
-                        MDAT[MEmode, :beta_vg] = beta_vg
-                        MDAT[MEmode, :POL] = (;vatp_range, vg_ranges)
+                lock(WLOCK) do
+                    MDAT[MEmode, :M] = M
+                    MDAT[MEmode, :Ms] = MEMs
+                    MDAT[MEmode, :beta_biom] = beta_biom
+                    MDAT[MEmode, :beta_vg] = beta_vg
+                    MDAT[MEmode, :POL] = (;vatp_range, vg_ranges)
 
-                        @info("Done MaxEnt  $c, prog: $gc/$N ... ",
-                            MEmode,  
-                            (Vl, D, ϵ, τ),
-                            M0.X, 
-                            (biom_avPX, biom_avPME),
-                            (vg_avPX, vg_avPME),
-                            thid
-                        ); println()
-                    end
+                    @info("Done MaxEnt  $c, prog: $gc/$N ... ",
+                        MEmode,  
+                        (Vl, D, ϵ, τ),
+                        M0.X, 
+                        (biom_avPX, biom_avPME),
+                        (vg_avPX, vg_avPME),
+                        thid
+                    ); println()
+                end
             end # for MEmode
 
             ## ----------------------------------------------------------------------------

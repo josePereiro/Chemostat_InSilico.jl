@@ -43,6 +43,7 @@ const ME_Z_EXPECTED_G_OPEN      = :ME_Z_EXPECTED_G_OPEN       # Match ME and Dy 
 const ME_Z_EXPECTED_G_BOUNDED   = :ME_Z_EXPECTED_G_BOUNDED    # Match ME and Dy biom average and constraint av_ug
 const ME_Z_EXPECTED_G_EXPECTED  = :ME_Z_EXPECTED_G_EXPECTED   # 
 const ME_Z_EXPECTED_G_MOVING    = :ME_Z_EXPECTED_G_MOVING     # 
+const ME_FULL_POLYTOPE          = :ME_FULL_POLYTOPE           # 
 
 const ME_Z_FIXXED_G_OPEN        = :ME_Z_FIXXED_G_OPEN         # Fix biom around observed
 const ME_Z_FIXXED_G_BOUNDED     = :ME_Z_FIXXED_G_BOUNDED      # Fix biom around observed
@@ -55,8 +56,9 @@ const FBA_Z_FIXXED_G_BOUNDED  = :FBA_Z_FIXXED_G_BOUNDED
 ALL_MODELS = [
     # ME_Z_OPEN_G_OPEN, ME_Z_OPEN_G_BOUNDED, 
     # ME_Z_EXPECTED_G_OPEN, 
-    ME_Z_EXPECTED_G_BOUNDED, 
-    ME_Z_EXPECTED_G_MOVING,
+    # ME_Z_EXPECTED_G_BOUNDED, 
+    ME_FULL_POLYTOPE,
+    # ME_Z_EXPECTED_G_MOVING,
     # ME_Z_FIXXED_G_OPEN, ME_Z_FIXXED_G_BOUNDED, 
     # ME_Z_EXPECTED_G_EXPECTED,
     # FBA_Z_OPEN_G_OPEN, FBA_Z_OPEN_G_BOUNDED, 
@@ -68,6 +70,7 @@ MOD_COLORS = Dict(
     ME_Z_OPEN_G_BOUNDED     => :orange, 
     ME_Z_EXPECTED_G_OPEN    => :red, 
     ME_Z_EXPECTED_G_BOUNDED => :blue,
+    ME_FULL_POLYTOPE         => :brown,
     ME_Z_EXPECTED_G_MOVING => :purple,
     ME_Z_FIXXED_G_OPEN      => :green, 
     ME_Z_FIXXED_G_BOUNDED   => :pink, 
@@ -84,6 +87,7 @@ MOD_LS = Dict(
     ME_Z_OPEN_G_BOUNDED     => :dash, 
     ME_Z_EXPECTED_G_OPEN    => :dash, 
     ME_Z_EXPECTED_G_BOUNDED => :dash,
+    ME_FULL_POLYTOPE         => :dash,
     ME_Z_EXPECTED_G_MOVING => :dash,
     ME_Z_FIXXED_G_OPEN      => :dash, 
     ME_Z_FIXXED_G_BOUNDED   => :dash, 
@@ -95,7 +99,6 @@ MOD_LS = Dict(
     FBA_Z_FIXXED_G_BOUNDED  => :dot,
 )
  
-
 ## ----------------------------------------------------------------------------
 # MINDEX
 # MDAT[MODsym, :M, Vl, D, ϵ, τ]
@@ -302,7 +305,6 @@ let
         plot!(p; ylim = [0.0, M * 1.1])
     end
     mysavefig(ps, "eps_vs_err_equal_scale")
-    
 
 end
 
@@ -337,120 +339,14 @@ let
 end
 
 ## ----------------------------------------------------------------------------
-# let
-
-#     params = EXP_PARAMS |> collect
-#     δ = 0.08
-#     LP_cache = nothing
-
-#     @threads for (Vl, D, ϵ, τ) in params
-#         status = MINDEX[:STATUS, Vl, D, ϵ, τ]
-#         status != :stst && continue
-        
-#         # LOAD DATA
-#         cfile = MINDEX[:DFILE, Vl, D, ϵ, τ]
-
-#         @info("Doing", 
-#             (Vl, D, ϵ, τ), δ
-#         )
-
-#         # RECOMPUTE MARGINALS
-#         M0 = idxdat([:M0], Vl, D, ϵ, τ)
-#         LP_cache = isnothing(LP_cache) ? Dyn.vgvatp_cache(M0) : LP_cache
-#         MDAT = deserialize(cfile)
-
-#         @info("Dynamic") 
-#         MDAT[:DyMs] = Dyn.get_marginals(M0; δ, LP_cache, verbose = false) do vatp, vg
-#             M0.Xb[vatp][vg] / M0.X
-#         end
-
-#         # EP
-#         for MODsym in [
-#                     ME_Z_OPEN_G_OPEN, ME_Z_OPEN_G_BOUNDED, 
-#                     ME_Z_EXPECTED_G_OPEN, ME_Z_EXPECTED_G_BOUNDED,
-#                     ME_Z_FIXXED_G_OPEN, ME_Z_FIXXED_G_BOUNDED, 
-#                     ME_Z_EXPECTED_G_EXPECTED
-#                 ]
-#             M = idxdat([MODsym, :M], Vl, D, ϵ, τ)
-#             beta_biom = idxdat([MODsym, :beta_biom], Vl, D, ϵ, τ)
-#             beta_vg = idxdat([MODsym, :beta_vg], Vl, D, ϵ, τ)
-            
-#             @info("EP", MODsym, beta_biom, beta_vg)
-#             z(vatp, vg) = LP_cache[vatp][vg][M.obj_idx]
-#             MDAT[MODsym, :Ms] = Dyn.get_marginals(M; δ, LP_cache, verbose = false) do vatp, vg
-#                 exp((beta_biom * z(vatp, vg)) + (beta_vg * vg))
-#             end
-#         end
-
-#         # FBA
-#         for MODsym in [
-#                     FBA_Z_OPEN_G_OPEN, FBA_Z_OPEN_G_BOUNDED, 
-#                     FBA_Z_FIXXED_G_OPEN, FBA_Z_FIXXED_G_BOUNDED
-#                 ]
-#             M = idxdat([MODsym, :M], Vl, D, ϵ, τ)
-            
-#             @info("FBA", MODsym)
-#             # FBA
-#             # Find maximum feasible vatp
-#             vatp_range, vg_ranges = Dyn.vatpvg_ranges(M)
-#             max_vatp = -Inf
-#             min_vg = Inf
-#             # (max_vatp, min_vg) will maximize the yield
-#             for (vatpi, vatp) in vatp_range |> enumerate
-#                 vg_range = vg_ranges[vatpi]
-#                 isempty(vg_range) && continue
-#                 if vatp > max_vatp
-#                     max_vatp = vatp
-#                     min_vg = minimum(vg_range)
-#                 end
-#             end
-#             @assert !isinf(max_vatp)
-
-#             fbaf(vatp, vg) = (vatp == max_vatp && vg == min_vg) ? 1.0 : 0.0
-#             MDAT[MODsym, :Ms] = Dyn.get_marginals(fbaf, M; δ, LP_cache, verbose = false)
-#         end
-
-
-#         # SAVING
-#         serialize(cfile, MDAT)
-#         Dyn.idxdat(;emptytcache = true)
-        
-#         # # TEST
-#         # rxn = "biom"
-#         # Dyn.idxdat(;emptytcache = true)
-#         # p = plot(;title = rxn, xlabel = "flx", ylabel = "prob")
-#         # plot_marginals!(p, ALL_MODELS, rxn, Vl, D, ϵ, τ)
-#         # mysavefig(p, "test")
-
-
-#     end # for (Vl, D, ϵ, τ) in params
-# end
-
-## ----------------------------------------------------------------------------
 # vatp, vg marginals v2
 let
-    MODELS = [
-        # ME_Z_OPEN_G_OPEN, 
-        # ME_Z_OPEN_G_BOUNDED, 
-        # ME_Z_EXPECTED_G_OPEN, 
-        ME_Z_EXPECTED_G_BOUNDED,
-        :ME_Z_EXPECTED_G_MOVING,
-        ME_Z_EXPECTED_G_EXPECTED,
-        # ME_Z_FIXXED_G_OPEN, 
-        # ME_Z_FIXXED_G_BOUNDED, 
-        # FBA_Z_OPEN_G_OPEN, 
-        # FBA_Z_OPEN_G_BOUNDED, 
-        # FBA_Z_FIXXED_G_OPEN, 
-        # FBA_Z_FIXXED_G_BOUNDED
-    ]
-    MODELS = ALL_MODELS
-
     # LEGEND PLOT
     leg_p = plot(;title = "Legend", xaxis = nothing, yaxis = nothing)
-    for  (i, MODsym) in MODELS |> enumerate
+    for  (i, MODsym) in ALL_MODELS |> enumerate
         ls = MOD_LS[MODsym] 
         color = MOD_COLORS[MODsym]
-        plot!(leg_p, fill(length(MODELS) - i, 3); label = string(MODsym), color, ls, lw = 8)        
+        plot!(leg_p, fill(length(ALL_MODELS) - i, 3); label = string(MODsym), color, ls, lw = 8)        
     end
     plot!(leg_p, fill(-1, 3); 
         label = "DYNAMIC", color = :black, lw = 8
@@ -464,7 +360,7 @@ let
         gparams = (;grid = false)
         for rxn in ["gt", "biom", "resp", "lt"]
             p = plot(;title = rxn, xlabel = "flx", ylabel = "prob", gparams...)
-            for  MODsym in MODELS
+            for  MODsym in ALL_MODELS
                 plot_marginals!(p, MODsym, rxn, Vl, D, ϵ, τ; sparams...)
             end
             push!(ps, p)
@@ -526,28 +422,29 @@ end
 #     mysavefig(ps, "dyn_vs_model_marginals"; layout, Vl, D, τ)
 # end
 
-## ----------------------------------------------------------------------------
-# # beta vs eps
-# let
-#     ϵs = MINDEX[:ϵs] |> sort
-#     colors = Plots.distinguishable_colors(length(MINDEX[:Ds]))
-#     colors = Dict(D => c for (D, c) in zip(MINDEX[:Ds], colors))
-#     p = plot(;xlabel = "beta", ylabel = "ϵ")
-#     sparams = (;alpha = 0.5, ms = 6)
-#     exp_params = Iterators.product(MINDEX[[:Vls, :Ds, :τs]]...)
-#     for (Vl, D, τ) in exp_params
-#         ϵ_ser = []
-#         beta_ser = []
-#         for ϵ in ϵs
-#             MINDEX[:STATUS, Vl, D, ϵ, τ] != :stst && continue
-#             beta = idxdat([:ME_EXPECTED, :beta_biom], Vl, D, ϵ, τ)
-#             push!(ϵ_ser, ϵ)
-#             push!(beta_ser, beta)
-#         end
-#         scatter!(p, beta_ser, ϵ_ser; label = "", color = colors[D], sparams...)
-#     end
-#     mysavefig(p, "$(ME_EXPECTED)_beta_vs_eps_D_colored")
-# end
+# ----------------------------------------------------------------------------
+# beta vs eps
+let
+    method = ME_FULL_POLYTOPE
+    ϵs = MINDEX[:ϵs] |> sort
+    colors = Plots.distinguishable_colors(length(MINDEX[:Ds]))
+    colors = Dict(D => c for (D, c) in zip(MINDEX[:Ds], colors))
+    p = plot(;xlabel = "beta", ylabel = "ϵ")
+    sparams = (;alpha = 0.5, ms = 6)
+    exp_params = Iterators.product(MINDEX[[:Vls, :Ds, :τs]]...)
+    for (Vl, D, τ) in exp_params
+        ϵ_ser = []
+        beta_ser = []
+        for ϵ in ϵs
+            MINDEX[:STATUS, Vl, D, ϵ, τ] != :stst && continue
+            beta = idxdat([method, :beta_biom], Vl, D, ϵ, τ)
+            push!(ϵ_ser, ϵ)
+            push!(beta_ser, beta)
+        end
+        scatter!(p, beta_ser, ϵ_ser; label = "", color = colors[D], sparams...)
+    end
+    mysavefig(p, "biom_beta_vs_eps_D_colored"; method)
+end
 
 ## ----------------------------------------------------------------------------
 # D vs vatp
@@ -583,7 +480,6 @@ let
     ϵs = MINDEX[:ϵs]
     sim_params = Iterators.product(MINDEX[[:Vls, :Ds, :τs]]...)
     sim_params = collect(sim_params)[1:5:end]
-    # models = [ME_BOUNDED, ME_EXPECTED, ME_CUTTED, ME_Z_OPEN_G_OPEN, FBA_BOUNDED, FBA_OPEN]
     
     ps = Plots.Plot[]
     for ϵ in ϵs |> sort
@@ -640,11 +536,10 @@ let
     mysavefig(ps, "flxs_corr"; layout) 
 end
 
-
 ## ----------------------------------------------------------------------------
 # \BETA vs D vs \EPS
 let
-    MODsym = ME_Z_EXPECTED_G_BOUNDED
+    MODsym = ME_FULL_POLYTOPE
 
     dat_pool = Dict()
     for (Vl, D, ϵ, τ) in EXP_PARAMS
@@ -684,7 +579,6 @@ let
     mysavefig(p, "beta_vs_eps"; MODsym) 
 end
 
-
 ## ----------------------------------------------------------------------------
 let
     # LEGEND
@@ -701,7 +595,7 @@ end
 let
 
     # SETUP
-    FLXS = ["vatp", "gt"]           
+    FLXS = ["vatp", "gt"]
     ϵs = MINDEX[:ϵs]
     color_pool = Dict(
         ϵ => c for (ϵ, c) in 
