@@ -1,7 +1,8 @@
 module Chemostat_InSilico
 
     import UtilsJL
-    UtilsJL.gen_top_proj(@__MODULE__)
+    const UJL = UtilsJL
+    UJL.gen_top_proj(@__MODULE__)
 
     # include("Polytopes/Polytopes.jl")
     # include("MaxEnt/MaxEnt.jl")
@@ -9,7 +10,7 @@ module Chemostat_InSilico
     include("Dynamic/Dynamic.jl")
 
     function __init__()
-        UtilsJL.create_proj_dirs(@__MODULE__)
+        UJL.create_proj_dirs(@__MODULE__)
     end
 
 end

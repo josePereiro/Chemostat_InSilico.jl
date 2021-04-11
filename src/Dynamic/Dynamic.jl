@@ -4,7 +4,7 @@ module Dynamic
     const InCh = Chemostat_InSilico
     import MathProgBase.HighLevelInterface: linprog
     import Clp: ClpSolver
-    import ProgressMeter: Progress, update!, next!, finish!
+    using ProgressMeter
     import Serialization: serialize, deserialize
     using Plots
     import GR
@@ -35,6 +35,9 @@ module Dynamic
     include("pos_defined.jl")
     include("yLP.jl")
     include("join.jl")
+    include("beta_boards.jl")
+    include("proj2d.jl")
+    include("poly_vol_board.jl")
 
     function __init__()
         UJL.create_proj_dirs(@__MODULE__)

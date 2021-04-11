@@ -82,6 +82,32 @@ let
         stw = 5
         stth = 0.01
 
+        ## -----------------------------------------------------------------------------------------------
+        function gd_core_fun(gdmodel; msg)
+            PME = Dyn.get_join!(M, PME) do vatp_, vg_
+                exp(z_beta * z(vatp_, vg_) + vg_beta * vg(vatp_, vg_))
+            end
+            z_avPME = Dyn.ave_over(PME) do vatp_, vg_
+                z(vatp_, vg_)
+            end
+            vg_avPME = Dyn.ave_over(PME) do vatp_, vg_
+                vg(vatp_, vg_)
+            end
+            
+            err = gdmodel.ϵi
+            show_info = gditer == 1 || rem(gditer, verb_frec) == 0 || 
+                gditer == maxiter || err < gdth
+            show_info && begin
+                @info(msg, 
+                    topiter, gditer,  
+                    (z_avPME, z_avPX), 
+                    (vg_avPME, cgD_X), 
+                    err, z_beta, vg_beta, thid
+                ); println()
+            end
+        end
+
+
         topiter = 1
         while true
 
@@ -98,23 +124,8 @@ let
                 gditer = gdmodel.iter
                 z_beta = UJL.gd_value(gdmodel)
 
-                PME = Dyn.get_join!(M, PME) do vatp_, vg_
-                    exp(z_beta * z(vatp_, vg_) + vg_beta * vg(vatp_, vg_))
-                end
-                z_avPME = Dyn.ave_over(PME) do vatp_, vg_
-                    z(vatp_, vg_)
-                end
-                
-                err = gdmodel.ϵi
-                show_info = gditer == 1 || rem(gditer, verb_frec) == 0 || 
-                    gditer == maxiter || err < gdth
-                show_info && begin
-                    @info("z grad Descent ", 
-                        topiter, gditer,  
-                        (z_avPX, z_avPME), 
-                        err, z_beta, thid
-                    ); println()
-                end
+                msg = "z grad Descent "
+                gd_core_fun(gdmodel; msg)
 
                 return z_avPME 
             end
@@ -152,23 +163,8 @@ let
                     gditer = gdmodel.iter
                     vg_beta = UJL.gd_value(gdmodel)
 
-                    PME = Dyn.get_join!(M, PME) do vatp_, vg_
-                        exp(z_beta * z(vatp_, vg_) + vg_beta * vg(vatp_, vg_))
-                    end
-                    vg_avPME = Dyn.ave_over(PME) do vatp_, vg_
-                        vg(vatp_, vg_)
-                    end
-                    
-                    err = gdmodel.ϵi
-                    show_info = gditer == 1 || rem(gditer, verb_frec) == 0 || 
-                        gditer == maxiter || err < gdth
-                    show_info && begin
-                        @info("vg grad descent ", 
-                            topiter, gditer,  
-                            (cgD_X, vg_avPME), 
-                            err, z_beta, thid
-                        ); println()
-                    end
+                    msg = "vg grad Descent "
+                    gd_core_fun(gdmodel; msg)
 
                     return vg_avPME 
                 end
@@ -362,46 +358,3 @@ let
     plot!(all_paths_p; xlim, ylim)
     mysavefig(all_paths_p, "gd_entropy_all_paths")
 end  
-
-## -----------------------------------------------------------------------------------------------
-# # Fix mess
-# let
-#     files = Dyn.cachedir.(readdir(Dyn.cachedir()))
-#     z_beta0_pool, vg_beta0_pool = [], []
-#     for file in files
-#         dat = get(deserialize(file), :dat, nothing)
-#         isnothing(dat) && continue
-#         keys(dat) != (:M, :z_betas, :vg_betas, :cgD_X, :z_avPX) && continue
-#         M, z_betas, vg_betas, cgD_X, z_avPX = dat
-#         z_beta0 = first(z_betas)
-#         vg_beta0 = first(vg_betas)
-        
-#         z_avPMEs, vg_avPMEs = [], []
-#         Hs = []
-#         PME = Dyn.get_join(M)
-#         obj_idx = M.obj_idx
-#         LP_cache = Dyn.vgvatp_cache(M)
-#         z(vatp, vg) = LP_cache[vatp][vg][obj_idx]
-#         vg(vatp, vg) = vg
-#         for (z_beta, vg_beta) in zip(z_betas, vg_betas)
-#             PME = Dyn.get_join!(M, PME) do vatp_, vg_
-#                 exp(z_beta * z(vatp_, vg_) + vg_beta * vg(vatp_, vg_))
-#             end
-#             z_avPME = Dyn.ave_over(z, PME)
-#             vg_avPME = Dyn.ave_over(vg, PME)
-#             H = Dyn.entropy(PME)
-#             push!(z_avPMEs, z_avPME)
-#             push!(vg_avPMEs, vg_avPME)
-#             push!(Hs, H)
-#         end
-        
-#         did = (ME_FULL_POL_DID, z_beta0, vg_beta0)
-#         dat = (;M, z_betas, vg_betas, z_avPMEs, vg_avPMEs, Hs, cgD_X, z_avPX)
-#         UJL.save_cache(did, dat)
-#         println()
-
-#         push!(z_beta0_pool, z_beta0)
-#         push!(vg_beta0_pool, vg_beta0)
-#     end
-#     UJL.save_cache(INDEX_DID, (;z_beta0_pool, vg_beta0_pool))
-# end

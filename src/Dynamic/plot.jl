@@ -177,3 +177,16 @@ function plot_polborder!(p, M; divnum = 50, sparams...)
 
     return p
 end
+
+function plot_proj(M, ider1 = "biom", ider2 = "gt"; bins = 50, skwargs...)
+    p2d = proj2d(M, ider1, ider2; bins)
+    p = plot(;xlabel = ider1, ylabel = ider2)
+    for (val1, (idx2L, idx2U)) in p2d
+        plot!(p, [val1, val1], [idx2L, idx2U]; 
+            label = "", color = :black, 
+            lw = 8, alpha = 0.3,
+            skwargs...
+        )
+    end
+    p
+end

@@ -29,88 +29,23 @@ fileid = "5"
 mysavefig(p, pname; params...) = 
     Dyn.mysavefig(p, pname, Dyn.plotsdir(), fileid; params...)
 
-getbeta(order) = sign(order) * 10.0 ^ abs(order)
-
 ## -----------------------------------------------------------------------------------------------
 # Compute beta maps
-BEXP_DID = (:BETA_SPACE_EXPLORATION_RESULTS)
-DTASK = @async let
-    error("Comment this line to continue")
+# base model
+M = Dyn.SimModel()
 
-    # base model
-    M = Dyn.SimModel()
-
-    obj_idx = M.obj_idx
-    LP_cache = Dyn.vgvatp_cache(M)
-    z(vatp, vg) = LP_cache[vatp][vg][obj_idx]
-    vg(vatp, vg) = vg
-
-    beta_orders = -3:0.1:3
-    betas = getbeta.(beta_orders)
-
-    H_board = zeros(length(beta_orders), length(beta_orders))
-    vg_board = similar(H_board)
-    z_board = similar(H_board)
-    prog = Progress(length(H_board))
-
-    Ch = Channel(nthreads()) do Ch_
-        for (z_bi, z_beta) in enumerate(betas)
-            for (vg_bi, vg_beta) in enumerate(betas)
-                put!(Ch_, (z_bi, z_beta, vg_bi, vg_beta))
-            end
-        end
-    end
-    
-    @threads for _ in 1:nthreads()
-        thid = threadid()
-        isinteractive() && thid == 1 && continue # Let main free
-        
-        local M0 = deepcopy(M)
-        local PME = Dyn.get_join(M0)
-        for (z_bi, z_beta, vg_bi, vg_beta) in Ch
-            
-            try;
-                PME = Dyn.get_join!(M0, PME) do _vatp, _vg
-                    exp(z_beta * z(_vatp, _vg) + vg_beta * vg(_vatp, _vg))
-                end
-                H = UJL.entropy(PME)
-
-                H_board[z_bi, vg_bi] = H
-                vg_board[z_bi, vg_bi] = Dyn.ave_over(PME) do vatp, vg
-                    vg
-                end
-                z_board[z_bi, vg_bi] = Dyn.ave_over(PME) do vatp, vg
-                    z(vatp, vg)
-                end
-
-                next!(prog; showvalues = [
-                        (:z_beta, z_beta),    
-                        (:vg_beta, vg_beta),    
-                        (:H, H),    
-                        (:thid, thid),    
-                    ]
-                )
-            catch err
-                @warn("Error at", z_beta, vg_beta)
-                rethrow(err)
-            end
-        end
-
-    end # for thid
-
-    # save
-    dat = (;M, beta_orders, betas,  H_board, vg_board, z_board)
-    UJL.save_cache(BEXP_DID, dat; verbose = true)
-
-end 
+beta_orders = -3:0.1:3
+betas = Dyn.getbeta.(beta_orders)
+H_board, z_board, vg_board = Dyn.get_beta_boards(
+    M, betas, betas; 
+    clear_cache = false
+)
 
 ## -----------------------------------------------------------------------------------------------
 # raw plots
 let
-    M, beta_orders, betas, H_board, vg_board, z_board = UJL.load_cache(BEXP_DID)
-
     ticks = UJL.get_ticks(beta_orders; l = 11) do order
-        round(getbeta(order))
+        round(Dyn.getbeta(order))
     end
 
     common_params = (;
@@ -140,11 +75,10 @@ end
 ## -----------------------------------------------------------------------------------------------
 # entropy plots
 let
-    M, beta_orders, betas, H_board, vg_board, z_board = UJL.load_cache(BEXP_DID)
     maxbeta = maximum(betas)
 
     xticks = UJL.get_ticks(eachindex(beta_orders); l = 11) do idx
-        round(getbeta(beta_orders[idx]))
+        round(Dyn.getbeta(beta_orders[idx]))
     end
     xrotation = 35
     colors = palette([:blue, :red], length(beta_orders))
@@ -172,7 +106,6 @@ end
 ## -----------------------------------------------------------------------------------------------
 # beta mag vs entropy
 let
-    M, beta_orders, betas, H_board, vg_board, z_board = UJL.load_cache(BEXP_DID)
 
     mag(vs) = sqrt(sum(vs .^ 2))
 
@@ -217,11 +150,9 @@ end
 
 ## -----------------------------------------------------------------------------------------------
 let
-    M, beta_orders, betas, H_board, vg_board, z_board = UJL.load_cache(BEXP_DID)
-    betas = getbeta.(beta_orders)
 
     ticks = UJL.get_ticks(beta_orders; l = 11) do order
-        round(getbeta(order))
+        round(Dyn.getbeta(order))
     end
 
     common_params = (;
@@ -267,9 +198,6 @@ end
 ## -----------------------------------------------------------------------------------------------
 # validity plots
 let
-    M, beta_orders, betas, H_board, vg_board, z_board = UJL.load_cache(BEXP_DID)
-    betas = getbeta.(beta_orders)
-
     # fake stst params
     cgD_X = 0.3
     M.D = 0.03
@@ -280,7 +208,7 @@ let
     z_valid_board, vg_valid_board = get_validity_boards(M, betas, z_board, vg_board; z_th)
 
     ticks = UJL.get_ticks(beta_orders; l = 11) do order
-        round(getbeta(order))
+        round(Dyn.getbeta(order))
     end
 
     common_params = (;
