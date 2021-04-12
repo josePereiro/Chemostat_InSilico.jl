@@ -20,7 +20,9 @@ let
                 p = plot(;xlabel = "time", ylabel, 
                     title = string("D: ", UJL.sci(D)))
                 for (ϵ, val) in zip(INDEX[:ϵs], vals) |> collect |> reverse
-                    plot!(p, f.(val); label = string("ϵ: ", ϵ), color = Gray(ϵ * 0.8), cparams...)
+                    plot!(p, f.(val); 
+                        label = string("ϵ: ", ϵ), color = ϵs_colors[ϵ], cparams...
+                    )
                 end
                 push!(ps, p)
                 push!(Dps, p)

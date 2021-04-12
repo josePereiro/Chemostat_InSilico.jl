@@ -30,13 +30,7 @@ function poly_vol_board(M, Ds, cgD_Xs;
 
         net = deepcopy(M.net)
         for (Di, D, cgD_Xi, cgD_X) in Ch
-            exp_biom = D
-            vgL, vgU = fixxing(net, biom_idx, exp_biom) do
-                fva(net, vg_idx)
-            end
-            ifeasible = cgD_X >= vgL && (vgL != vgU && vgL != 0.0)
-            psize[Di, cgD_Xi] = ifeasible ? cgD_X - vgL : NaN
-
+            psize[Di, cgD_Xi] = poly_vol(M, D, cgD_X; net)
         end
     end
 
@@ -44,4 +38,18 @@ function poly_vol_board(M, Ds, cgD_Xs;
     UJL.save_cache(chash, psize)
     
     return psize
+end
+
+function poly_vol(M, D, cgD_X; 
+        net = M.net
+    )
+
+    biom_idx = M.obj_idx
+    vg_idx = M.vg_idx
+
+    vgL, vgU = fixxing(net, biom_idx, D) do
+        fva(net, vg_idx)
+    end
+    ifeasible = cgD_X >= vgL && (vgL != vgU && vgL != 0.0)
+    ifeasible ? cgD_X - vgL : NaN
 end
