@@ -50,7 +50,23 @@ end
 ## ----------------------------------------------------------------------------
 # vatp, vg marginals v2
 let
-    return
+
+    ALL_MODELS = [
+        # ME_Z_OPEN_G_OPEN, 
+        # ME_Z_OPEN_G_BOUNDED, 
+        # ME_Z_EXPECTED_G_OPEN, 
+        # ME_Z_EXPECTED_G_BOUNDED, 
+        ME_FULL_POLYTOPE,
+        # ME_Z_EXPECTED_G_MOVING,
+        # ME_Z_FIXXED_G_OPEN, 
+        # ME_Z_FIXXED_G_BOUNDED, 
+        # ME_Z_EXPECTED_G_EXPECTED,
+
+        # FBA_Z_OPEN_G_OPEN, 
+        # FBA_Z_OPEN_G_BOUNDED, 
+        # FBA_Z_FIXXED_G_OPEN, 
+        # FBA_Z_FIXXED_G_BOUNDED
+    ]
 
     # LEGEND PLOT
     leg_p = plot(;title = "Legend", xaxis = nothing, yaxis = nothing)
@@ -98,6 +114,8 @@ let
 
         # SAVING
         mysavefig(ps, "Marginals_v2"; Vl, D, ϵ, M.sg, M.sl)
+
+        return
     end
 end
 

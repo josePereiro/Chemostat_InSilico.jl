@@ -7,6 +7,20 @@ let
     ϵs = MINDEX[:ϵs]
     sim_params = Iterators.product(MINDEX[[:Vls, :Ds, :τs]]...)
     sim_params = collect(sim_params)[1:5:end]
+
+    ALL_MODELS = [
+        # ME_Z_OPEN_G_OPEN, ME_Z_OPEN_G_BOUNDED, 
+        # ME_Z_EXPECTED_G_OPEN, 
+        # ME_Z_EXPECTED_G_BOUNDED, 
+        ME_FULL_POLYTOPE,
+        # ME_Z_EXPECTED_G_MOVING,
+        # ME_Z_FIXXED_G_OPEN, ME_Z_FIXXED_G_BOUNDED, 
+        # ME_Z_EXPECTED_G_EXPECTED,
+        FBA_Z_OPEN_G_OPEN, 
+        FBA_Z_OPEN_G_BOUNDED, 
+        FBA_Z_FIXXED_G_OPEN, 
+        FBA_Z_FIXXED_G_BOUNDED
+    ]
     
     ps = Plots.Plot[]
     for ϵ in ϵs |> sort
@@ -70,14 +84,28 @@ let
     # SETUP
     FLXS = ["vatp", "gt"]
     ϵs = MINDEX[:ϵs]
-    color_pool = Dict(
-        ϵ => c for (ϵ, c) in 
-        zip(ϵs, Plots.distinguishable_colors(length(ϵs)))
-    )
+    Vls = MINDEX[:Vls] |> first
+    Ds = MINDEX[:Ds] 
+    τs = MINDEX[:τs] |> first
+    
 
+    ALL_MODELS = [
+        # ME_Z_OPEN_G_OPEN, ME_Z_OPEN_G_BOUNDED, 
+        # ME_Z_EXPECTED_G_OPEN, 
+        # ME_Z_EXPECTED_G_BOUNDED, 
+        ME_FULL_POLYTOPE,
+        # ME_Z_EXPECTED_G_MOVING,
+        # ME_Z_FIXXED_G_OPEN, ME_Z_FIXXED_G_BOUNDED, 
+        # ME_Z_EXPECTED_G_EXPECTED,
+        FBA_Z_OPEN_G_OPEN, 
+        FBA_Z_OPEN_G_BOUNDED, 
+        FBA_Z_FIXXED_G_OPEN, 
+        FBA_Z_FIXXED_G_BOUNDED
+    ]
+    
     # COLLECT
     dat_pool = Dict()
-    for (Vl, D, ϵ, τ) in EXP_PARAMS
+    for (Vl, D, ϵ, τ) in Iterators.product(Vls, Ds, ϵs, τs)
 
         # LOAD
         MINDEX[:STATUS, Vl, D, ϵ, τ] != :stst && continue
@@ -101,7 +129,7 @@ let
 
                 push!(dat[:xs], dym_vatp)
                 push!(dat[:ys], m_vatp)
-                push!(dat[:colors], color_pool[ϵ])
+                push!(dat[:colors], ES_COLORS[ϵ])
             end
         end
     end
@@ -130,7 +158,7 @@ let
     # LEGEND
     leg_p = plot(;title = "legend", xaxis = nothing, ylabel = "ϵ")
     for ϵ in ϵs
-        color = color_pool[ϵ]
+        color = ES_COLORS[ϵ]
         plot!(leg_p, fill(ϵ, 10); color, label = string("ϵ: ", ϵ), lw = 8)
     end
 

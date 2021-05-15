@@ -25,6 +25,7 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
     using Random
     using Colors
     using FileIO
+    using ColorSchemes
 
 end
 
@@ -34,7 +35,17 @@ fileid = "2.2"
 minmax(a) = isempty(a) ? (0.0, 0.0) : (minimum(a), maximum(a))
 
 # ----------------------------------------------------------------------------
-# Prepare network
+# MINDEX
+# MDAT[MODsym, :M, Vl, D, ϵ, τ]
+# MDAT[MODsym, :Ms, Vl, D, ϵ, τ]
+# MDAT[MODsym, :beta_biom, Vl, D, ϵ, τ]
+# MDAT[:STATUS, Vl, D, ϵ]
+MINDEX_FILE = Dyn.procdir("marg_dat_index.bson")
+MINDEX = UJL.load_data(MINDEX_FILE)
+EXP_PARAMS = Iterators.product(MINDEX[[:Vls, :Ds, :ϵs, :τs]]...)
+idxdat(dk, indexks...) = Dyn.idxdat(MINDEX, dk, indexks...)
+
+# ----------------------------------------------------------------------------
 
 const ME_Z_OPEN_G_OPEN          = :ME_Z_OPEN_G_OPEN           # Do not use extra constraints
 const ME_Z_OPEN_G_BOUNDED       = :ME_Z_OPEN_G_BOUNDED        # 
@@ -54,15 +65,17 @@ const FBA_Z_FIXXED_G_OPEN     = :FBA_Z_FIXXED_G_OPEN
 const FBA_Z_FIXXED_G_BOUNDED  = :FBA_Z_FIXXED_G_BOUNDED
 
 ALL_MODELS = [
-    # ME_Z_OPEN_G_OPEN, ME_Z_OPEN_G_BOUNDED, 
-    # ME_Z_EXPECTED_G_OPEN, 
-    # ME_Z_EXPECTED_G_BOUNDED, 
+    ME_Z_OPEN_G_OPEN, ME_Z_OPEN_G_BOUNDED, 
+    ME_Z_EXPECTED_G_OPEN, 
+    ME_Z_EXPECTED_G_BOUNDED, 
     ME_FULL_POLYTOPE,
-    # ME_Z_EXPECTED_G_MOVING,
-    # ME_Z_FIXXED_G_OPEN, ME_Z_FIXXED_G_BOUNDED, 
-    # ME_Z_EXPECTED_G_EXPECTED,
-    # FBA_Z_OPEN_G_OPEN, FBA_Z_OPEN_G_BOUNDED, 
-    # FBA_Z_FIXXED_G_OPEN, FBA_Z_FIXXED_G_BOUNDED
+    ME_Z_EXPECTED_G_MOVING,
+    ME_Z_FIXXED_G_OPEN, ME_Z_FIXXED_G_BOUNDED, 
+    ME_Z_EXPECTED_G_EXPECTED,
+    FBA_Z_OPEN_G_OPEN, 
+    FBA_Z_OPEN_G_BOUNDED, 
+    FBA_Z_FIXXED_G_OPEN, 
+    FBA_Z_FIXXED_G_BOUNDED
 ]
 
 MOD_COLORS = Dict(
@@ -70,16 +83,16 @@ MOD_COLORS = Dict(
     ME_Z_OPEN_G_BOUNDED     => :orange, 
     ME_Z_EXPECTED_G_OPEN    => :red, 
     ME_Z_EXPECTED_G_BOUNDED => :blue,
-    ME_FULL_POLYTOPE         => :brown,
+    ME_FULL_POLYTOPE         => :red,
     ME_Z_EXPECTED_G_MOVING => :purple,
     ME_Z_FIXXED_G_OPEN      => :green, 
     ME_Z_FIXXED_G_BOUNDED   => :pink, 
     ME_Z_EXPECTED_G_EXPECTED   => :violet, 
 
-    FBA_Z_OPEN_G_OPEN       => :dot, 
-    FBA_Z_OPEN_G_BOUNDED    => :dot, 
-    FBA_Z_FIXXED_G_OPEN     => :dot, 
-    FBA_Z_FIXXED_G_BOUNDED  => :dot,
+    FBA_Z_OPEN_G_OPEN       => :blue, 
+    FBA_Z_OPEN_G_BOUNDED    => :blue, 
+    FBA_Z_FIXXED_G_OPEN     => :blue, 
+    FBA_Z_FIXXED_G_BOUNDED  => :blue,
 )
 
 MOD_LS = Dict(
@@ -98,17 +111,13 @@ MOD_LS = Dict(
     FBA_Z_FIXXED_G_OPEN     => :dot, 
     FBA_Z_FIXXED_G_BOUNDED  => :dot,
 )
- 
-# ----------------------------------------------------------------------------
-# MINDEX
-# MDAT[MODsym, :M, Vl, D, ϵ, τ]
-# MDAT[MODsym, :Ms, Vl, D, ϵ, τ]
-# MDAT[MODsym, :beta_biom, Vl, D, ϵ, τ]
-# MDAT[:STATUS, Vl, D, ϵ]
-MINDEX_FILE = Dyn.procdir("marg_dat_index.bson")
-MINDEX = UJL.load_data(MINDEX_FILE)
-EXP_PARAMS = Iterators.product(MINDEX[[:Vls, :Ds, :ϵs, :τs]]...)
-idxdat(dk, indexks...) = Dyn.idxdat(MINDEX, dk, indexks...)
+
+ES_COLORS = let
+    ϵs = MINDEX[:ϵs]
+    paltt = ColorSchemes.thermal
+    colors = get.([paltt], ϵs / maximum(ϵs))
+    Dict(ϵ => c for (ϵ, c) in zip(ϵs, colors))
+end
 
 # ----------------------------------------------------------------------------
 # PLOTS
