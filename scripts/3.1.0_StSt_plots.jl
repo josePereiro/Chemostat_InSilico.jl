@@ -64,19 +64,24 @@ const FBA_Z_OPEN_G_BOUNDED    = :FBA_Z_OPEN_G_BOUNDED
 const FBA_Z_FIXXED_G_OPEN     = :FBA_Z_FIXXED_G_OPEN 
 const FBA_Z_FIXXED_G_BOUNDED  = :FBA_Z_FIXXED_G_BOUNDED
 
-ALL_MODELS = [
+ME_MODELS = [
     ME_Z_OPEN_G_OPEN, ME_Z_OPEN_G_BOUNDED, 
     ME_Z_EXPECTED_G_OPEN, 
     ME_Z_EXPECTED_G_BOUNDED, 
     ME_FULL_POLYTOPE,
     ME_Z_EXPECTED_G_MOVING,
     ME_Z_FIXXED_G_OPEN, ME_Z_FIXXED_G_BOUNDED, 
-    ME_Z_EXPECTED_G_EXPECTED,
+    ME_Z_EXPECTED_G_EXPECTED
+]
+
+FBA_MODELS = [
     FBA_Z_OPEN_G_OPEN, 
     FBA_Z_OPEN_G_BOUNDED, 
     FBA_Z_FIXXED_G_OPEN, 
     FBA_Z_FIXXED_G_BOUNDED
 ]
+
+ALL_MODELS = [ME_MODELS; FBA_MODELS]
 
 MOD_COLORS = Dict(
     ME_Z_OPEN_G_OPEN        => :brown, 
@@ -89,27 +94,16 @@ MOD_COLORS = Dict(
     ME_Z_FIXXED_G_BOUNDED   => :pink, 
     ME_Z_EXPECTED_G_EXPECTED   => :violet, 
 
-    FBA_Z_OPEN_G_OPEN       => :blue, 
-    FBA_Z_OPEN_G_BOUNDED    => :blue, 
-    FBA_Z_FIXXED_G_OPEN     => :blue, 
-    FBA_Z_FIXXED_G_BOUNDED  => :blue,
+    (FBA_MODELS .=> :blue)...
+    # FBA_Z_OPEN_G_OPEN       => :blue, 
+    # FBA_Z_OPEN_G_BOUNDED    => :blue, 
+    # FBA_Z_FIXXED_G_OPEN     => :blue, 
+    # FBA_Z_FIXXED_G_BOUNDED  => :blue,
 )
 
 MOD_LS = Dict(
-    ME_Z_OPEN_G_OPEN        => :dash, 
-    ME_Z_OPEN_G_BOUNDED     => :dash, 
-    ME_Z_EXPECTED_G_OPEN    => :dash, 
-    ME_Z_EXPECTED_G_BOUNDED => :dash,
-    ME_FULL_POLYTOPE         => :dash,
-    ME_Z_EXPECTED_G_MOVING => :dash,
-    ME_Z_FIXXED_G_OPEN      => :dash, 
-    ME_Z_FIXXED_G_BOUNDED   => :dash, 
-    ME_Z_EXPECTED_G_EXPECTED   => :dash, 
-
-    FBA_Z_OPEN_G_OPEN       => :dot, 
-    FBA_Z_OPEN_G_BOUNDED    => :dot, 
-    FBA_Z_FIXXED_G_OPEN     => :dot, 
-    FBA_Z_FIXXED_G_BOUNDED  => :dot,
+    (ME_MODELS .=> :dash)...,
+    (FBA_MODELS .=> :dot)...,
 )
 
 ES_COLORS = let
@@ -149,6 +143,8 @@ end
 
 function plot_marginals!(p, MODsyms, rxn, Vl, D, ϵ, τ; draw_av = true, sparams...)
 
+    isdelta(M) = length(findall(isone, M)) == 1
+
     # std fill
     DyMs = idxdat([:DyMs], Vl, D, ϵ, τ)
     plot!(p, DyMs[rxn]; label = "", alpha = 0.0)
@@ -162,11 +158,10 @@ function plot_marginals!(p, MODsyms, rxn, Vl, D, ϵ, τ; draw_av = true, sparams
     end
     
     for MODsym in MODsyms
-        ls = MOD_LS[MODsym] 
         color = MOD_COLORS[MODsym]
         Ms = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
         plot!(p, Ms[rxn]; label = "", alpha = 0.0)
-        if draw_av
+        if draw_av && !isdelta(Ms[rxn])
             av = Dyn.av(Ms[rxn])
             std = sqrt(Dyn.va(Ms[rxn]))
             vspan!(p, [av - std, av + std], label = "",
@@ -193,7 +188,7 @@ function plot_marginals!(p, MODsyms, rxn, Vl, D, ϵ, τ; draw_av = true, sparams
         ls = MOD_LS[MODsym] 
         color = MOD_COLORS[MODsym]
         Ms = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
-        if draw_av
+        if draw_av && !isdelta(Ms[rxn])
             av = Dyn.av(Ms[rxn])
             std = sqrt(Dyn.va(Ms[rxn]))
             vline!(p, [av - std, av + std]; 
@@ -211,7 +206,17 @@ function plot_marginals!(p, MODsyms, rxn, Vl, D, ϵ, τ; draw_av = true, sparams
         ls = MOD_LS[MODsym] 
         color = MOD_COLORS[MODsym]
         Ms = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
-        plot!(p, Ms[rxn]; label = "", color, ls, sparams...)
+        
+        if isdelta(Ms[rxn])
+            mx = findfirst(isone, Ms[rxn])
+            xlb, xub = (keys(Ms[rxn]),) .|> (minimum, maximum)
+            ylb, yub = (values(Ms[rxn]),) .|> (minimum, maximum)
+
+            plot!(p, [xlb, xub], [ylb, ylb]; label = "", color, ls, sparams...)
+            plot!(p, [mx, mx], [ylb, yub]; label = "", color, ls, sparams...)
+        else
+            plot!(p, Ms[rxn]; label = "", color, ls, sparams...)
+        end
     end
     plot!(p, DyMs[rxn]; label = "", sparams..., color = :black)
 
@@ -220,4 +225,29 @@ end
 plot_marginals!(p, MODsyms::Symbol, rxn, Vl, D, ϵ, τ; sparams...) = 
     plot_marginals!(p, [MODsyms], rxn, Vl, D, ϵ, τ; sparams...)
 
+# ## ---
+# is_delta(M) = length(findall(isone, M)) == 1
 
+# ## ---
+# let
+#     rxn = "biom"
+#     p = plot(;title = rxn, xlabel = "flx", ylabel = "prob")
+#     for (Vl, D, ϵ, τ) in EXP_PARAMS
+#         for  MODsym in FBA_MODELS
+#             sparams = (;lw = 8)
+#             ls = MOD_LS[MODsym] 
+#             color = MOD_COLORS[MODsym]
+
+#             Ms = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
+#             mx = findfirst(isone, Ms[rxn])
+#             xlb, xub = (keys(Ms[rxn]),) .|> (minimum, maximum)
+#             ylb, yub = (values(Ms[rxn]),) .|> (minimum, maximum)
+#             @show mx
+
+#             plot!(p, [xlb, xub], [ylb, ylb]; label = "", color, ls, sparams...)
+#             plot!(p, [mx, mx], [ylb, yub]; label = "", color, ls, sparams...)
+#         end
+#         break
+#     end
+#     mysavefig(p, "Test")
+# end

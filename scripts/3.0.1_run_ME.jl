@@ -14,8 +14,8 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
     # G BOUNDING
 
     ## -----------------------------------------------------------
-    ismode = MEmode in [ME_Z_OPEN_G_BOUNDED, ME_Z_EXPECTED_G_BOUNDED, ME_Z_FIXXED_G_BOUNDED]
-    ismode && let
+    is_bounded = MEmode in [ME_Z_OPEN_G_BOUNDED, ME_Z_EXPECTED_G_BOUNDED, ME_Z_FIXXED_G_BOUNDED]
+    is_bounded && let
         # Fix av_ug
         net = M.net
         net.ub[M.vg_idx] = min(M.Vg, cgD_X)
@@ -28,8 +28,8 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
     # Z FIXXED
 
     ## -----------------------------------------------------------
-    ismode = MEmode in [ME_Z_FIXXED_G_OPEN, ME_Z_FIXXED_G_BOUNDED]
-    ismode && let
+    is_fixxed = MEmode in [ME_Z_FIXXED_G_OPEN, ME_Z_FIXXED_G_BOUNDED]
+    is_fixxed && let
         # Fix biomass to observable
         net = M.net
         net.ub[M.obj_idx] = biom_avPX * (1.0 + δμ)
@@ -50,8 +50,11 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
     gdth = 1e-2
 
     ## -----------------------------------------------------------
-    ismode = MEmode in [ME_Z_EXPECTED_G_OPEN, ME_Z_EXPECTED_G_BOUNDED]
-    ismode && let
+    # Z EXPECTED
+
+    ## -----------------------------------------------------------
+    is_zexpected = MEmode in [ME_Z_EXPECTED_G_OPEN, ME_Z_EXPECTED_G_BOUNDED]
+    is_zexpected && let
         # Gradient descent
         target = biom_avPX
         x0 = 1.5e2
@@ -93,8 +96,11 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
     end
 
     ## -----------------------------------------------------------
-    ismode = MEmode == ME_Z_EXPECTED_G_EXPECTED
-    ismode && let
+    # Z AND G EXPECTED
+
+    ## -----------------------------------------------------------
+    is_zgexpected = MEmode == ME_Z_EXPECTED_G_EXPECTED
+    is_zgexpected && let
         target = [biom_avPX, vg_avPX]
         x0 = [100.0, -10.0]
         x1 = [101.0, -11.0]
@@ -139,8 +145,8 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
     end
 
     ## -----------------------------------------------------------
-    ismode = MEmode == ME_FULL_POLYTOPE
-    ismode && let
+    is_full = MEmode == ME_FULL_POLYTOPE
+    is_full && let
         topiter = 1
         join = Dyn.get_join(M)
         stth, stw = 0.1, 8
@@ -265,8 +271,8 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
     end
 
     ## -----------------------------------------------------------
-    ismode = MEmode == ME_Z_EXPECTED_G_MOVING
-    ismode && let
+    is_moving = MEmode == ME_Z_EXPECTED_G_MOVING
+    is_moving && let
 
         # init globals
         Δstep = 0.5
@@ -276,7 +282,6 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
         biom_err = Inf
         
         ## -----------------------------------------------------------
-        last_beta = 50.0
         for rit in 1:maxiter
 
             ## -----------------------------------------------------------
@@ -351,7 +356,7 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
     end
 
     ## -----------------------------------------------------------
-    # MARGINALS
+    # DO ME AND MARGINALIZE
     MEMs = Dyn.get_marginals(M; δ, LP_cache, verbose = false) do vatp_, vg_
         exp((beta_biom * z(vatp_, vg_)) + (beta_vg * vg(vatp_, vg_)))
     end

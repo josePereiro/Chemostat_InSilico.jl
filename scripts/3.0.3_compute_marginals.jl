@@ -40,6 +40,7 @@ let
                 push!(MINDEX[:ϵs], ϵ); push!(MINDEX[:τs], τ)
                 MINDEX[:DFILE, Vl, D, ϵ, τ] = relpath(cfile, InCh.projectdir())
                 MINDEX[:STATUS, Vl, D, ϵ, τ] = status
+
                 @info("Doing $c, prog: $gc/$N ... ", 
                     (Vl, D, ϵ, τ), 
                     M0.X, status, 
@@ -97,16 +98,25 @@ let
             ## ----------------------------------------------------------------------------  
             # MaxEnt marginals
             for MEmode in [ 
-                    # ME_Z_OPEN_G_OPEN, ME_Z_OPEN_G_BOUNDED, 
+                    ME_Z_OPEN_G_OPEN, 
+                    # ME_Z_OPEN_G_BOUNDED, 
                     # ME_Z_EXPECTED_G_OPEN, 
                     ME_FULL_POLYTOPE,
-                    # ME_Z_EXPECTED_G_BOUNDED,
+                    ME_Z_EXPECTED_G_BOUNDED,
                     # ME_Z_EXPECTED_G_MOVING,
-                    # ME_Z_FIXXED_G_OPEN, ME_Z_FIXXED_G_BOUNDED, 
-                    # ME_Z_EXPECTED_G_EXPECTED
+                    # ME_Z_FIXXED_G_OPEN, 
+                    ME_Z_FIXXED_G_BOUNDED, 
+                    ME_Z_EXPECTED_G_EXPECTED
                 ]
 
-                isfile(cfile) && !REDO_MAXENT && break
+                # check cache
+                skip = REDO_MAXENT || !haskey(MDAT, MEmode)
+                if skip; lock(WLOCK) do
+                        @info("Cache found (Skipping) $c, prog: $gc/$N ... ", 
+                            (Vl, D, ϵ, τ), MEmode, status, thid
+                        ); println()
+                    end; continue                
+                end
 
                 # Setup network
                 M = deepcopy(M0)
@@ -146,7 +156,14 @@ let
                     FBA_Z_FIXXED_G_OPEN, FBA_Z_FIXXED_G_BOUNDED
                 ]
                 
-                isfile(cfile) && !REDO_FBA && break
+                # check cache
+                skip = REDO_FBA || !haskey(MDAT, FBAmode)
+                if skip; lock(WLOCK) do
+                        @info("Cache found (Skipping) $c, prog: $gc/$N ... ", 
+                            (Vl, D, ϵ, τ), FBAmode, status, thid
+                        ); println()
+                    end; continue                
+                end         
 
                 # Setup network
                 M = deepcopy(M0)

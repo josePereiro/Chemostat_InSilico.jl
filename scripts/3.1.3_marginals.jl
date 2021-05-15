@@ -83,11 +83,11 @@ let
         status = MINDEX[:STATUS, Vl, D, ϵ, τ]
         status != :stst && continue
         ps = Plots.Plot[]
-        sparams =(;ylim = [0.0, Inf], lw = 4)
+        sparams =(;ylim = [0.0, Inf], lw = 4, draw_av = false)
         gparams = (;grid = false)
         for rxn in ["gt", "biom", "resp", "lt"]
             p = plot(;title = rxn, xlabel = "flx", ylabel = "prob", gparams...)
-            for  MODsym in ALL_MODELS
+            for  MODsym in FBA_MODELS
                 plot_marginals!(p, MODsym, rxn, Vl, D, ϵ, τ; sparams...)
             end
             push!(ps, p)
