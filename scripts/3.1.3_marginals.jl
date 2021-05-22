@@ -52,15 +52,11 @@ end
 let
 
     ALL_MODELS = [
-        # ME_Z_OPEN_G_OPEN, 
-        # ME_Z_OPEN_G_BOUNDED, 
-        # ME_Z_EXPECTED_G_OPEN, 
-        # ME_Z_EXPECTED_G_BOUNDED, 
+        ME_Z_OPEN_G_OPEN, 
+        ME_Z_FIXXED_G_BOUNDED, 
+        ME_Z_EXPECTED_G_BOUNDED,
         ME_FULL_POLYTOPE,
-        # ME_Z_EXPECTED_G_MOVING,
-        # ME_Z_FIXXED_G_OPEN, 
-        # ME_Z_FIXXED_G_BOUNDED, 
-        # ME_Z_EXPECTED_G_EXPECTED,
+        ME_Z_EXPECTED_G_EXPECTED,
 
         # FBA_Z_OPEN_G_OPEN, 
         # FBA_Z_OPEN_G_BOUNDED, 
@@ -87,7 +83,7 @@ let
         gparams = (;grid = false)
         for rxn in ["gt", "biom", "resp", "lt"]
             p = plot(;title = rxn, xlabel = "flx", ylabel = "prob", gparams...)
-            for  MODsym in FBA_MODELS
+            for  MODsym in ALL_MODELS
                 plot_marginals!(p, MODsym, rxn, Vl, D, ϵ, τ; sparams...)
             end
             push!(ps, p)
@@ -150,3 +146,153 @@ end
 #     layout = 4, 2
 #     mysavefig(ps, "dyn_vs_model_marginals"; layout, Vl, D, τ)
 # end
+
+## ----------------------------------------------------------------------------
+# vatp, vg marginals v3
+let
+
+    MODELS = [
+        ME_Z_OPEN_G_OPEN, 
+        ME_FULL_POLYTOPE,
+        # ME_Z_EXPECTED_G_EXPECTED,
+        ME_Z_EXPECTED_G_BOUNDED,
+        ME_Z_FIXXED_G_BOUNDED, 
+
+        # FBA_Z_OPEN_G_OPEN, 
+        # FBA_Z_OPEN_G_BOUNDED, 
+        # FBA_Z_FIXXED_G_OPEN, 
+        # FBA_Z_FIXXED_G_BOUNDED
+    ]
+
+    # LEGEND PLOT
+    leg_p = plot(;title = "Legend", xaxis = nothing, yaxis = nothing)
+    for  (i, MODsym) in MODELS |> enumerate
+        ls = MOD_LS[MODsym] 
+        color = MOD_COLORS[MODsym]
+        plot!(leg_p, fill(length(MODELS) - i, 3); label = string(MODsym), color, ls, lw = 8)        
+    end
+    plot!(leg_p, fill(-1, 3); 
+        label = "DYNAMIC", color = :black, lw = 8
+    )
+
+    for (Vl, D, ϵ, τ) in EXP_PARAMS
+        status = MINDEX[:STATUS, Vl, D, ϵ, τ]
+        status != :stst && continue
+        ps = Plots.Plot[]
+        sparams =(;ylim = [0.0, Inf], lw = 4, draw_av = true)
+        gparams = (;grid = false)
+        
+        for  MODsym in [:dyn; MODELS]
+            for rxn in ["gt", "biom"]
+                p = plot(;title = rxn, xlabel = "flx", ylabel = "prob", gparams...)
+                plot_marginals!(p, [], rxn, Vl, D, ϵ, τ; alpha = 0.0, draw_av = false)
+                if MODsym == :dyn
+                    plot_marginals!(p, [], rxn, Vl, D, ϵ, τ; sparams...)
+                else
+                    plot_marginals!(p, MODsym, rxn, Vl, D, ϵ, τ; 
+                        draw_dyn = false, sparams...
+                    )
+                end
+                push!(ps, p)
+            end
+        end
+
+        M = idxdat([:M0], Vl, D, ϵ, τ)
+
+        # LEGEND
+        mysavefig(leg_p, "Marginals_v3_legend")
+
+        # SAVING
+        layout = (length(MODELS) + 1, 2)
+        mysavefig(ps, "Marginals_v3"; Vl, D, ϵ, M.sg, M.sl, layout)
+
+    end
+end
+
+## ----------------------------------------------------------------------------
+# vatp, vg marginals v4
+let
+
+    MODELS = [
+        # ME_Z_OPEN_G_OPEN, 
+        ME_FULL_POLYTOPE,
+        # ME_Z_EXPECTED_G_EXPECTED,
+        ME_Z_EXPECTED_G_BOUNDED,
+        # ME_Z_FIXXED_G_BOUNDED, 
+
+        # FBA_Z_OPEN_G_OPEN, 
+        # FBA_Z_OPEN_G_BOUNDED, 
+        # FBA_Z_FIXXED_G_OPEN, 
+        # FBA_Z_FIXXED_G_BOUNDED
+    ]
+    
+    Vl = MINDEX[:Vls] |> first
+    τ = MINDEX[:τs] |> first
+    Ds = MINDEX[:Ds] |> sort
+    ϵs = MINDEX[:ϵs] |> sort
+    
+    # LEGEND PLOT
+    leg_p = plot(;title = "Legend", xaxis = nothing, yaxis = nothing)
+    for ϵ in ϵs
+        color = ES_COLORS[ϵ]
+        plot!(leg_p, fil l(ϵ, 10); label = string(ϵ), color, lw = 8)        
+    end
+    mysavefig(leg_p, "Marginals_v4_legend")
+    return
+
+    for D in Ds
+        ps_pool = Dict()
+        for ϵ in ϵs
+            status = MINDEX[:STATUS, Vl, D, ϵ, τ]
+            status != :stst && continue
+            
+            color = ES_COLORS[ϵ]
+            fontsize = 13
+            sparams = (;
+                ylim = [0.0, Inf], lw = 6, ls = :solid, color,
+                dpi = 1000,
+                thickness_scaling = 1.3, 
+                xguidefontsize = fontsize, yguidefontsize = fontsize
+            )
+            gparams = (;grid = false)
+            
+            for (rxn, xlim) in [("gt", [0.0, 0.52]), ("biom", [0.0, 0.052])]
+                for  MODsym in [:dyn; MODELS]
+                    p = get!(ps_pool, (rxn, MODsym), 
+                        plot(;title = rxn, xlabel = "flx", ylabel = "prob", gparams...)
+                    )
+                    if MODsym == :dyn
+                        plot_marginals!(p, [], rxn, Vl, D, ϵ, τ; 
+                            draw_av = false, draw_va = false, xlim,
+                            sparams...
+                        )
+                    else
+                        plot_marginals!(p, MODsym, rxn, Vl, D, ϵ, τ; 
+                            draw_av = false, draw_va = false, draw_dyn = false, 
+                            xlim, sparams...
+                        )
+                    end
+                    plot_marginals!(p, [], rxn, Vl, D, ϵ, τ; 
+                        alpha = 0.0, draw_av = false, draw_va = false, 
+                        draw_dyn = false, 
+                    )
+                end
+            end
+        end
+
+        # COLLECTS
+        ps = Plots.Plot[]
+        for  MODsym in [:dyn; MODELS]
+            for rxn in ["gt", "biom"]
+                !haskey(ps_pool, (rxn, MODsym)) && continue
+                push!(ps, ps_pool[(rxn, MODsym)])
+            end
+        end
+
+        # SAVING
+        isempty(ps) && continue
+        layout = (length(MODELS) + 1, 2)
+        mysavefig(ps, "Marginals_v4"; Vl, D, τ, layout)
+    end
+end
+

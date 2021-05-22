@@ -82,56 +82,61 @@ end
 let
 
     # SETUP
-    FLXS = ["vatp", "gt"]
     ϵs = MINDEX[:ϵs]
     Vls = MINDEX[:Vls] |> first
     Ds = MINDEX[:Ds] 
     τs = MINDEX[:τs] |> first
     
+    FLXS = ["vatp", "gt"]
 
     ALL_MODELS = [
-        # ME_Z_OPEN_G_OPEN, ME_Z_OPEN_G_BOUNDED, 
-        # ME_Z_EXPECTED_G_OPEN, 
-        # ME_Z_EXPECTED_G_BOUNDED, 
+        ME_Z_OPEN_G_OPEN, 
         ME_FULL_POLYTOPE,
-        # ME_Z_EXPECTED_G_MOVING,
-        # ME_Z_FIXXED_G_OPEN, ME_Z_FIXXED_G_BOUNDED, 
-        # ME_Z_EXPECTED_G_EXPECTED,
-        FBA_Z_OPEN_G_OPEN, 
-        FBA_Z_OPEN_G_BOUNDED, 
+        ME_Z_EXPECTED_G_EXPECTED,
+        ME_Z_EXPECTED_G_BOUNDED,
+        ME_Z_FIXXED_G_BOUNDED,
+
+        FBA_Z_OPEN_G_OPEN,
+        FBA_Z_OPEN_G_BOUNDED,
         FBA_Z_FIXXED_G_OPEN, 
         FBA_Z_FIXXED_G_BOUNDED
     ]
     
     # COLLECT
-    dat_pool = Dict()
-    for (Vl, D, ϵ, τ) in Iterators.product(Vls, Ds, ϵs, τs)
-
-        # LOAD
-        MINDEX[:STATUS, Vl, D, ϵ, τ] != :stst && continue
-        DyMs = idxdat([:DyMs], Vl, D, ϵ, τ)
-        @info("Collecting", (Vl, D, ϵ, τ))
+    dat_pool_cid = ("DATA POOL")
+    # UJL.delete_cache(dat_pool_cid) # Reset cache
+    dat_pool = UJL.load_cache(dat_pool_cid) do
         
-        for flx in FLXS
+        dat_pool_ = Dict()
+        for (Vl, D, ϵ, τ) in Iterators.product(Vls, Ds, ϵs, τs)
+
+            # LOAD
+            MINDEX[:STATUS, Vl, D, ϵ, τ] != :stst && continue
+            DyMs = idxdat([:DyMs], Vl, D, ϵ, τ)
+            @info("Collecting", (Vl, D, ϵ, τ))
             
-            dym_vatp = Dyn.av(DyMs[flx])
-            # dym_vatp = rand() # Test
+            for flx in FLXS
+                
+                dym_vatp = Dyn.av(DyMs[flx])
+                # dym_vatp = rand() # Test
 
-            for MODsym in ALL_MODELS
-                dat = get!(dat_pool, (flx, MODsym), Dict())
-                get!(dat, :xs, [])
-                get!(dat, :ys, [])
-                get!(dat, :colors, [])
+                for MODsym in ALL_MODELS
+                    dat = get!(dat_pool_, (flx, MODsym), Dict())
+                    get!(dat, :xs, [])
+                    get!(dat, :ys, [])
+                    get!(dat, :colors, [])
 
-                Ms = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
-                m_vatp = Dyn.av(Ms[flx])
-                # m_vatp = rand() # Test
+                    Ms = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
+                    m_vatp = Dyn.av(Ms[flx])
+                    # m_vatp = rand() # Test
 
-                push!(dat[:xs], dym_vatp)
-                push!(dat[:ys], m_vatp)
-                push!(dat[:colors], ES_COLORS[ϵ])
+                    push!(dat[:xs], dym_vatp)
+                    push!(dat[:ys], m_vatp)
+                    push!(dat[:colors], ES_COLORS[ϵ])
+                end
             end
         end
+        return dat_pool_
     end
 
     # PLOT CORRS

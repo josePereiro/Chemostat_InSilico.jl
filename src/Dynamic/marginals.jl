@@ -1,11 +1,11 @@
 # TODO: make this the default discretization form
-_discretize(n, Δ) = round(n / Δ) * Δ
+_discretize(n, Δ) = iszero(Δ) ? n : round(n / Δ) * Δ
 
 function get_marginals(f::Function, M::SimModel, rxns = M.net.rxns; 
         verbose = true, δ = 0.06, LP_cache = nothing)
     isempty(M.Xb) && error("Xb is empty!!!")
     
-    isnothing(LP_cache) = (LP_cache = vgvatp_cache(M))
+    isnothing(LP_cache) && (LP_cache = vgvatp_cache(M))
     
     vatp_range, vg_ranges = vatpvg_ranges(M)
 
@@ -36,7 +36,6 @@ function get_marginals(f::Function, M::SimModel, rxns = M.net.rxns;
         flxs = keys(raw_marginal)
         flxL, flxU = minimum(flxs), maximum(flxs)
         Δ = abs(flxL - flxU) * δ
-
         for (raw_flx, p) in raw_marginal
             dflx = _discretize(raw_flx, Δ)
             get!(marginal, dflx, 0.0)
@@ -47,7 +46,7 @@ function get_marginals(f::Function, M::SimModel, rxns = M.net.rxns;
     end
 
     # NORMALIZING
-    for (rxn, marginal) in marginals
+    for (_, marginal) in marginals
         Z = sum(values(marginal))
         @assert Z > 0
         for (flx, p) in marginal
@@ -63,5 +62,13 @@ function get_marginals(f::Function, M::SimModel, rxns = M.net.rxns;
     return marginals
 end
 
-av(marginal) = sum(p * v for (v, p) in marginal)
-va(marginal) = (μ = av(marginal); sum(p * ((v - μ)^2) for (v, p) in marginal))
+function Δv(marginal)
+    sum = 0
+    for v in keys(marginal)
+        sum += v
+    end
+    sum/length(marginal)
+end
+
+av(marginal) = sum(p * v for (v, p) in marginal) / Δv(marginal)
+va(marginal) = (μ = av(marginal); sum(p * ((v - μ)^2) for (v, p) in marginal) / Δv(marginal))

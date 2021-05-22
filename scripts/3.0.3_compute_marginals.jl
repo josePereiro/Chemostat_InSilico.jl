@@ -29,7 +29,6 @@ let
             M0 = MDAT[:M0] = idxdat([:M], Vl, D, ϵ, τ; cache = true)
             status = idxdat([:status], Vl, D, ϵ, τ; cache = false, emptycache = true)
             
-            # LP_cache = nothing
             c = nothing
             lock(WLOCK) do
                 gc += 1; c = gc

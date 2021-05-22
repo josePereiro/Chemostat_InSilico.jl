@@ -82,6 +82,11 @@ function fixxing(f, net, idx, val)
     net.lb[idx], net.ub[idx] = bk_lb, bk_ub
     return val
 end
+fixxing(f, net, id::String, val) = fixxing(f, net, rxnindex(net, id), val)
+lb!(net, idx::Int, val) = net.lb[idx] = val
+lb!(net, id::String, val) = lb!(net, rxnindex(net, id), val)
+ub!(net, idx::Int, val) = net.ub[idx] = val
+ub!(net, id::String, val) = ub!(net, rxnindex(net, id), val)
 
 ## -------------------------------------------------------------------
 Base.hash(net::MetNet) = hash((net.S, net.b, net.lb, net.ub))

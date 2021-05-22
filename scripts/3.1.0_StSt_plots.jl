@@ -27,6 +27,8 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
     using FileIO
     using ColorSchemes
 
+    UJL.set_cache_dir(Dyn.cachedir())
+
 end
 
 # ----------------------------------------------------------------------------
@@ -84,6 +86,7 @@ FBA_MODELS = [
 ALL_MODELS = [ME_MODELS; FBA_MODELS]
 
 MOD_COLORS = Dict(
+    :dyn => :black,
     ME_Z_OPEN_G_OPEN        => :brown, 
     ME_Z_OPEN_G_BOUNDED     => :orange, 
     ME_Z_EXPECTED_G_OPEN    => :red, 
@@ -99,6 +102,27 @@ MOD_COLORS = Dict(
     # FBA_Z_OPEN_G_BOUNDED    => :blue, 
     # FBA_Z_FIXXED_G_OPEN     => :blue, 
     # FBA_Z_FIXXED_G_BOUNDED  => :blue,
+)
+
+MODEL_LABELS = Dict(
+    :dyn => "\$ DYNAMIC \$",
+    ME_FULL_POLYTOPE => "\$ ME^{\\langle 1,1 \\rangle} \$",
+    ME_Z_EXPECTED_G_BOUNDED => "\$ ME^{\\langle 1,0 \\rangle} \$",
+    ME_Z_FIXXED_G_BOUNDED => "\$ {ME^{\\langle 0,0 \\rangle}}_z \$", 
+    ME_Z_OPEN_G_OPEN => "\$ ME^{\\langle 0,0 \\rangle} \$", 
+    ME_Z_EXPECTED_G_EXPECTED => "\$ ME^{\\langle 2,0 \\rangle} \$", 
+)
+
+# :auto, :circle, :rect, :star5, :diamond, :hexagon, :cross, :xcross, :utriangle, 
+# :dtriangle, :rtriangle, :ltriangle, :pentagon, :heptagon, :octagon, :star4, 
+# :star6, :star7, :star8, :vline, :hline, :+, :x
+MODEL_MARKERS = Dict(
+    :dyn => :circle,
+    ME_FULL_POLYTOPE => :square,
+    ME_Z_EXPECTED_G_BOUNDED => :utriangle,
+    ME_Z_FIXXED_G_BOUNDED => :star, 
+    ME_Z_OPEN_G_OPEN => :hex,
+    ME_Z_EXPECTED_G_EXPECTED => :dtriangle,
 )
 
 MOD_LS = Dict(
@@ -141,45 +165,52 @@ function plot_pol!(p, MODsym, Vl, D, ϵ, τ; sparams...)
     p
 end
 
-function plot_marginals!(p, MODsyms, rxn, Vl, D, ϵ, τ; draw_av = true, sparams...)
+function plot_marginals!(p, MODsyms, rxn, Vl, D, ϵ, τ; 
+        draw_dyn = true,
+        draw_av = true, 
+        draw_va = true, 
+        sparams...
+    )
 
-    isdelta(M) = length(findall(isone, M)) == 1
+    isdelta(M) = length(findall(!isequal(minimum(values(M))), M)) == 1
 
     # std fill
-    DyMs = idxdat([:DyMs], Vl, D, ϵ, τ)
-    plot!(p, DyMs[rxn]; label = "", alpha = 0.0)
-    if draw_av
-        av = Dyn.av(DyMs[rxn])
-        std = sqrt(Dyn.va(DyMs[rxn]))
-        vspan!(p, [av - std, av + std], label = "",
-            linecolor = :grey, fillcolor = :grey,
-            alpha = 0.3
-        )
+    if draw_dyn
+        DyMs = idxdat([:DyMs], Vl, D, ϵ, τ)
+        plot!(p, DyMs[rxn]; label = "", alpha = 0.0)
+        if draw_va
+            av = Dyn.av(DyMs[rxn])
+            std = sqrt(Dyn.va(DyMs[rxn]))
+            vspan!(p, [av - std, av + std], label = "",
+                linecolor = :grey, fillcolor = :grey,
+                alpha = 0.3
+            )
+        end
     end
     
     for MODsym in MODsyms
         color = MOD_COLORS[MODsym]
         Ms = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
         plot!(p, Ms[rxn]; label = "", alpha = 0.0)
-        if draw_av && !isdelta(Ms[rxn])
+        if draw_va && !isdelta(Ms[rxn])
             av = Dyn.av(Ms[rxn])
             std = sqrt(Dyn.va(Ms[rxn]))
             vspan!(p, [av - std, av + std], label = "",
                 linecolor = color, fillcolor = color,
-                alpha = 0.3
+                alpha = 0.2
             )
         end
     end
 
     # means and std lines
-    if draw_av
+    if draw_dyn
         av = Dyn.av(DyMs[rxn])
         std = sqrt(Dyn.va(DyMs[rxn]))
-        vline!(p, [av - std, av + std]; 
-            label = "", sparams..., 
+        draw_va && vline!(p, [av - std, av + std]; 
+            label = "", sparams..., alpha = 0.5,
             color = :black, ls = :solid, lw = 3
         )
-        vline!(p, [av]; label = "", sparams..., 
+        draw_av && vline!(p, [av]; label = "", sparams..., 
             color = :black, ls = :solid, lw = 5
         )
     end
@@ -188,14 +219,14 @@ function plot_marginals!(p, MODsyms, rxn, Vl, D, ϵ, τ; draw_av = true, sparams
         ls = MOD_LS[MODsym] 
         color = MOD_COLORS[MODsym]
         Ms = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
-        if draw_av && !isdelta(Ms[rxn])
+        if !isdelta(Ms[rxn])
             av = Dyn.av(Ms[rxn])
             std = sqrt(Dyn.va(Ms[rxn]))
-            vline!(p, [av - std, av + std]; 
+            draw_va && vline!(p, [av - std, av + std]; 
                 label = "", color, sparams..., 
-                ls, lw = 3
+                ls, lw = 3, alpha = 0.3
             )
-            vline!(p, [av]; label = "", color, sparams..., 
+            draw_av && vline!(p, [av]; label = "", color, sparams..., 
                 ls, lw = 5
             )
         end
@@ -218,36 +249,11 @@ function plot_marginals!(p, MODsyms, rxn, Vl, D, ϵ, τ; draw_av = true, sparams
             plot!(p, Ms[rxn]; label = "", color, ls, sparams...)
         end
     end
-    plot!(p, DyMs[rxn]; label = "", sparams..., color = :black)
+    draw_dyn && plot!(p, DyMs[rxn]; 
+        label = "", color = :black, sparams..., 
+    )
 
     return p
 end
-plot_marginals!(p, MODsyms::Symbol, rxn, Vl, D, ϵ, τ; sparams...) = 
-    plot_marginals!(p, [MODsyms], rxn, Vl, D, ϵ, τ; sparams...)
-
-# ## ---
-# is_delta(M) = length(findall(isone, M)) == 1
-
-# ## ---
-# let
-#     rxn = "biom"
-#     p = plot(;title = rxn, xlabel = "flx", ylabel = "prob")
-#     for (Vl, D, ϵ, τ) in EXP_PARAMS
-#         for  MODsym in FBA_MODELS
-#             sparams = (;lw = 8)
-#             ls = MOD_LS[MODsym] 
-#             color = MOD_COLORS[MODsym]
-
-#             Ms = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
-#             mx = findfirst(isone, Ms[rxn])
-#             xlb, xub = (keys(Ms[rxn]),) .|> (minimum, maximum)
-#             ylb, yub = (values(Ms[rxn]),) .|> (minimum, maximum)
-#             @show mx
-
-#             plot!(p, [xlb, xub], [ylb, ylb]; label = "", color, ls, sparams...)
-#             plot!(p, [mx, mx], [ylb, yub]; label = "", color, ls, sparams...)
-#         end
-#         break
-#     end
-#     mysavefig(p, "Test")
-# end
+plot_marginals!(p, MODsyms::Symbol, rxn, Vl, D, ϵ, τ; kwargs...) = 
+    plot_marginals!(p, [MODsyms], rxn, Vl, D, ϵ, τ; kwargs...)
