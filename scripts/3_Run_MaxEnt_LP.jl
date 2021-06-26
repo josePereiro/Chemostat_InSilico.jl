@@ -33,7 +33,7 @@ else
     DRY_RUN = parsed_args["dry-run"]
 end
 
-## ----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 @time begin
     import Chemostat_InSilico
     const InCh = Chemostat_InSilico
@@ -58,7 +58,7 @@ DINDEX = UJL.load_data(DINDEX_FILE) # Dynamic index
 DATA_FILE_PREFFIX = "marginal_dat"
 dat_file(;sim_params...) = 
     Dyn.procdir(UJL.mysavename(DATA_FILE_PREFFIX, "jls"; sim_params...)) 
-idxdat(dk, indexks...; cache = false, emptycache = true) = 
+dyn_dat(dk, indexks...; cache = false, emptycache = true) = 
     Dyn.idxdat(DINDEX, dk, indexks...; cache, emptycache)
 
 # ----------------------------------------------------------------------------
@@ -82,6 +82,8 @@ const FBA_Z_OPEN_G_OPEN       = :FBA_Z_OPEN_G_OPEN
 const FBA_Z_OPEN_G_BOUNDED    = :FBA_Z_OPEN_G_BOUNDED
 const FBA_Z_FIXXED_G_OPEN     = :FBA_Z_FIXXED_G_OPEN 
 const FBA_Z_FIXXED_G_BOUNDED  = :FBA_Z_FIXXED_G_BOUNDED
+const FBA_Z_FIXXED_MAX_G      = :FBA_Z_FIXXED_MAX_G
+const FBA_Z_FIXXED_MIN_G      = :FBA_Z_FIXXED_MIN_G
 
 ## ----------------------------------------------------------------------------
 # set up functions
@@ -90,7 +92,7 @@ include("3.0.2_run_FBA.jl")
 
 ## ----------------------------------------------------------------------------
 # run
-include("3.0.3_compute_marginals.jl")
+include("3.0.3_compute_and_save.jl")
 
 ## ----------------------------------------------------------------------------
 # SAVING

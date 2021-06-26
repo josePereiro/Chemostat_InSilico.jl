@@ -123,7 +123,7 @@ const D_MAX_BOUNDS = (0.0, 0.05)
 const X_MAX_BOUNDS = (0.01, 5.0)
 const REF_METNET = ToyModel()
 
-function check_params(M)
+function check_params(M::SimModel)
 
     # field
     for (field, (lb, ub)) in [
@@ -145,3 +145,5 @@ function check_params(M)
         )
     end
 end
+
+drop_Xb!(M::SimModel) = (empty!(M.Xb); M)

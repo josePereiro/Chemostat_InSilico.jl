@@ -12,7 +12,7 @@ let
     Vls, Ds, ϵs, τs = DINDEX[[:Vls, :Ds, :ϵs, :τs]]
     
     params = Iterators.product(Vls, Ds, ϵs, τs)
-    Ch = Channel(1) do Ch_
+    Ch = Channel(nthreads()) do Ch_
         for (Vl, D, ϵ, τ) in params
             put!(Ch_, (Vl, D, ϵ, τ))
         end
@@ -26,8 +26,8 @@ let
             
             ## ----------------------------------------------------------------------------
             MDAT = UJL.DictTree()
-            M0 = MDAT[:M0] = idxdat([:M], Vl, D, ϵ, τ; cache = true)
-            status = idxdat([:status], Vl, D, ϵ, τ; cache = false, emptycache = true)
+            M0 = MDAT[:M0] = dyn_dat([:M], Vl, D, ϵ, τ; cache = true)
+            status = dyn_dat([:status], Vl, D, ϵ, τ; cache = false, emptycache = true)
             
             c = nothing
             lock(WLOCK) do
@@ -92,7 +92,8 @@ let
             lock(WLOCK) do
                 MDAT[:DyMs] = DyMs
             end
-            DyMs = nothing
+            DyMs = nothing # clear memory
+            GC.gc()
 
             ## ----------------------------------------------------------------------------  
             # MaxEnt marginals
@@ -109,7 +110,7 @@ let
                 ]
 
                 # check cache
-                skip = REDO_MAXENT || !haskey(MDAT, MEmode)
+                skip = !REDO_MAXENT && haskey(MDAT, MEmode)
                 if skip; lock(WLOCK) do
                         @info("Cache found (Skipping) $c, prog: $gc/$N ... ", 
                             (Vl, D, ϵ, τ), MEmode, status, thid
@@ -120,7 +121,8 @@ let
                 # Setup network
                 M = deepcopy(M0)
                 
-                MEMs, beta_biom, beta_vg = run_ME!(M, MEmode; 
+                
+                PME, MEMs, beta_biom, beta_vg = run_ME!(M, MEmode; 
                     LP_cache, δ, δμ, 
                     biom_avPX, vg_avPX
                 )
@@ -131,7 +133,9 @@ let
                 vatp_range, vg_ranges = Dyn.vatpvg_ranges(M)
 
                 lock(WLOCK) do
+                    Dyn.drop_Xb!(M)
                     MDAT[MEmode, :M] = M
+                    MDAT[MEmode, :P] = PME
                     MDAT[MEmode, :Ms] = MEMs
                     MDAT[MEmode, :beta_biom] = beta_biom
                     MDAT[MEmode, :beta_vg] = beta_vg
@@ -152,11 +156,12 @@ let
             # FBA
             for FBAmode in [
                     FBA_Z_OPEN_G_OPEN, FBA_Z_OPEN_G_BOUNDED,
-                    FBA_Z_FIXXED_G_OPEN, FBA_Z_FIXXED_G_BOUNDED
+                    FBA_Z_FIXXED_G_OPEN, FBA_Z_FIXXED_G_BOUNDED, 
+                    FBA_Z_FIXXED_MAX_G, FBA_Z_FIXXED_MIN_G
                 ]
                 
                 # check cache
-                skip = REDO_FBA || !haskey(MDAT, FBAmode)
+                skip = !REDO_FBA && haskey(MDAT, FBAmode)
                 if skip; lock(WLOCK) do
                         @info("Cache found (Skipping) $c, prog: $gc/$N ... ", 
                             (Vl, D, ϵ, τ), FBAmode, status, thid
@@ -166,7 +171,7 @@ let
 
                 # Setup network
                 M = deepcopy(M0)
-                
+
                 FBAMs = run_FBA!(M, FBAmode; 
                     LP_cache, δ, δμ, biom_avPX, verbose = false)
                 biom_avFBA = Dyn.av(FBAMs[Dyn.BIOMASS_IDER]) # biomass dynamic mean
@@ -175,6 +180,7 @@ let
                 vatp_range, vg_ranges = Dyn.vatpvg_ranges(M)
 
                 lock(WLOCK) do
+                    Dyn.drop_Xb!(M)
                     MDAT[FBAmode, :M] = M
                     MDAT[FBAmode, :Ms] = FBAMs
                     MDAT[FBAmode, :POL] = (;vatp_range, vg_ranges)

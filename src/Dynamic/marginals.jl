@@ -70,5 +70,5 @@ function Δv(marginal)
     sum/length(marginal)
 end
 
-av(marginal) = sum(p * v for (v, p) in marginal) / Δv(marginal)
-va(marginal) = (μ = av(marginal); sum(p * ((v - μ)^2) for (v, p) in marginal) / Δv(marginal))
+av(marginal) = sum(p * v for (v, p) in marginal)
+va(marginal) = (μ = av(marginal); sum(p * ((v - μ)^2) for (v, p) in marginal))

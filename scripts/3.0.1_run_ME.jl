@@ -7,6 +7,8 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
     # Globals
     cgD_X = M.cg * M.D/ M.X
     biom_idx = M.obj_idx
+    vl_idx = M.vl_idx
+    vg_idx = M.vg_idx
     z(vatp, vg) = LP_cache[vatp][vg][biom_idx]
     vg(vatp, vg) = vg
     
@@ -18,8 +20,8 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
     is_bounded && let
         # Fix av_ug
         net = M.net
-        net.ub[M.vg_idx] = min(M.Vg, cgD_X)
-        net.ub[M.vl_idx] = min(M.Vl, cgD_X)
+        net.ub[vg_idx] = min(M.Vg, cgD_X)
+        net.ub[vl_idx] = min(M.Vl, cgD_X)
         L, U = Dyn.fva(net)
         net.lb .= L; net.ub .= U
     end
@@ -32,8 +34,8 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
     is_fixxed && let
         # Fix biomass to observable
         net = M.net
-        net.ub[M.obj_idx] = biom_avPX * (1.0 + δμ)
-        net.lb[M.obj_idx] = biom_avPX * (1.0 - δμ)
+        net.ub[biom_idx] = biom_avPX * (1.0 + δμ)
+        net.lb[biom_idx] = biom_avPX * (1.0 - δμ)
         L, U = Dyn.fva(net)
         net.lb .= L; net.ub .= U
     end
@@ -43,6 +45,7 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
     
     ## -----------------------------------------------------------
     # Globals
+    PME = nothing
     beta_biom = 0.0
     beta_vg = 0.0
     maxiter = 800
@@ -63,13 +66,13 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
         gdit = 1
 
         # grad desc
-        join = Dyn.get_join(M)
-        function f1(gdmodel)
+        PME = Dyn.get_join(M)
+        function gd_biom!(gdmodel)
             
             beta_biom = UJL.gd_value(gdmodel)
 
-            PME = Dyn.get_join!(M, join) do vatp, vg
-                exp(beta_biom * z(vatp, vg))
+            PME = Dyn.get_join!(M, PME) do vatp_, vg_
+                exp(beta_biom * z(vatp_, vg_))
             end
             biom_avPME = Dyn.ave_over(z, PME)
             
@@ -88,7 +91,7 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
             return biom_avPME
         end
 
-        gdmodel = UJL.grad_desc(f1; gdth, 
+        gdmodel = UJL.grad_desc(gd_biom!; gdth, 
             target, x0, x1, maxΔx, maxiter, 
             verbose = false
         )
@@ -107,11 +110,11 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
         maxΔx = [80.0, 30.0]
         gdit = 1
 
-        join = Dyn.get_join(M)
-        function up_fun!(gdmodel)
+        PME = Dyn.get_join(M)
+        function gd_biom_vg!(gdmodel)
 
             beta_biom, beta_vg = UJL.gd_value(gdmodel)
-            PME = Dyn.get_join!(M, join) do vatp_, vg_
+            PME = Dyn.get_join!(M, PME) do vatp_, vg_
                 exp(beta_biom * z(vatp_, vg_) + beta_vg * vg(vatp_, vg_))
             end
             biom_avPME = Dyn.ave_over(z, PME)
@@ -137,7 +140,7 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
             return [biom_avPME, vg_avPME]
         end
 
-        gdmodel = UJL.grad_desc_vec(up_fun!; 
+        gdmodel = UJL.grad_desc_vec(gd_biom_vg!; 
             target, x0, x1, maxΔx, gdth, maxiter, 
             verbose = false
         )
@@ -148,7 +151,7 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
     is_full = MEmode == ME_FULL_POLYTOPE
     is_full && let
         topiter = 1
-        join = Dyn.get_join(M)
+        PME = Dyn.get_join(M)
         stth, stw = 0.1, 8
         betas_biom, betas_vg = [beta_biom], [beta_vg]
         biom_avPME, vg_avPME = 0.0, 0.0
@@ -163,12 +166,12 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
             maxΔx = max(100.0, abs(beta_biom) * 0.1)
             x1 = x0 + maxΔx * 0.1
 
-            function z_fun(gdmodel)
+            function gd_biom!(gdmodel)
 
                 gditer = gdmodel.iter
                 beta_biom = UJL.gd_value(gdmodel)
 
-                PME = Dyn.get_join!(M, join) do vatp_, vg_
+                PME = Dyn.get_join!(M, PME) do vatp_, vg_
                     exp(beta_biom * z(vatp_, vg_) + beta_vg * vg(vatp_, vg_))
                 end
                 biom_avPME = Dyn.ave_over(z, PME)
@@ -188,7 +191,7 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
                 return biom_avPME 
             end
 
-            gdmodel = UJL.grad_desc(z_fun; gdth, 
+            gdmodel = UJL.grad_desc(gd_biom!; gdth, 
                 target, x0, x1, maxΔx, 
                 maxiter, verbose = false
             )
@@ -196,13 +199,11 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
             
             ## -----------------------------------------------------------
             # Check balance at beta_vg = 0.0
-            PME = Dyn.get_join!(M, join) do vatp_, vg_
+            PME = Dyn.get_join!(M, PME) do vatp_, vg_
                 beta_vg_ = 0.0
                 exp(beta_biom * z(vatp_, vg_) + beta_vg_ * vg(vatp_, vg_))
             end
-            vg_avPME_at_b0 = Dyn.ave_over(PME) do vatp_, vg_
-                vg(vatp_, vg_)
-            end
+            vg_avPME_at_b0 = Dyn.ave_over(vg, PME)
             vg_valid_at_b0 = vg_avPME_at_b0 <= cgD_X
 
             ## -----------------------------------------------------------
@@ -216,7 +217,7 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
                 maxΔx = max(10.0, abs(beta_vg) * 0.1)
                 x1 = x0 + maxΔx * 0.1
                 
-                function vg_fun(gdmodel)
+                function gd_vg!(gdmodel)
 
                     gditer = gdmodel.iter
                     beta_vg = UJL.gd_value(gdmodel)
@@ -241,7 +242,7 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
                     return vg_avPME 
                 end
 
-                gdmodel = UJL.grad_desc(vg_fun; gdth, 
+                gdmodel = UJL.grad_desc(gd_vg!; gdth, 
                     target, x0, x1, maxΔx, 
                     maxiter, verbose = false
                 )
@@ -277,7 +278,6 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
         # init globals
         Δstep = 0.5
         maxiter = 500
-        PME = nothing
         biom_avPME = 0.0
         biom_err = Inf
         
@@ -293,12 +293,12 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
         
             # grad desc
             it = 1
-            join = Dyn.get_join(M)
-            function up_fun!(gdmodel)
+            PME = Dyn.get_join(M)
+            function gd_biom!(gdmodel)
                 beta = UJL.gd_value(gdmodel)
 
-                PME = Dyn.get_join!(M, join) do vatp, vg
-                    exp(beta * z(vatp, vg))
+                PME = Dyn.get_join!(M, PME) do vatp_, vg_
+                    exp(beta * z(vatp_, vg_))
                 end
                 biom_avPME = Dyn.ave_over(z, PME)
                 
@@ -317,7 +317,7 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
                 return biom_avPME
             end
 
-            gdmodel = UJL.grad_desc(up_fun!; gdth, 
+            gdmodel = UJL.grad_desc(gd_biom!; gdth, 
                 target, x0, x1, maxΔx, maxiter, 
                 verbose = false
             )
@@ -329,12 +329,12 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
         
             Δ = cgD_X - vg_avPME
             net = M.net
-            net.ub[M.vg_idx] = max(net.lb[M.vg_idx], 
-                min(M.Vg, net.ub[M.vg_idx] + Δstep * Δ)
+            net.ub[vg_idx] = max(net.lb[vg_idx], 
+                min(M.Vg, net.ub[vg_idx] + Δstep * Δ)
             )
-            L, U = Dyn.fva(M.net)
+            L, U = Dyn.fva(net)
             net.lb .= L; net.ub .= U
-            vg_ub = net.ub[M.vg_idx]
+            vg_ub = net.ub[vg_idx]
         
             valid_vg_avPME = Δ >= 0
 
@@ -360,5 +360,5 @@ function run_ME!(M, MEmode; LP_cache, δ, δμ, biom_avPX, vg_avPX)
     MEMs = Dyn.get_marginals(M; δ, LP_cache, verbose = false) do vatp_, vg_
         exp((beta_biom * z(vatp_, vg_)) + (beta_vg * vg(vatp_, vg_)))
     end
-    return MEMs, beta_biom, beta_vg
+    return PME, MEMs, beta_biom, beta_vg
 end

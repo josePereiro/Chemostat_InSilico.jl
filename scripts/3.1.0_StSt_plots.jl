@@ -28,7 +28,6 @@ quickactivate(@__DIR__, "Chemostat_InSilico")
     using ColorSchemes
 
     UJL.set_cache_dir(Dyn.cachedir())
-
 end
 
 # ----------------------------------------------------------------------------
@@ -45,7 +44,14 @@ minmax(a) = isempty(a) ? (0.0, 0.0) : (minimum(a), maximum(a))
 MINDEX_FILE = Dyn.procdir("marg_dat_index.bson")
 MINDEX = UJL.load_data(MINDEX_FILE)
 EXP_PARAMS = Iterators.product(MINDEX[[:Vls, :Ds, :ϵs, :τs]]...)
-idxdat(dk, indexks...) = Dyn.idxdat(MINDEX, dk, indexks...)
+dyn_status(Vl, D, ϵ, τ) = MINDEX[:STATUS, Vl, D, ϵ, τ]
+dyn_dat(dk, indexks...) = Dyn.idxdat(MINDEX, dk, indexks...)
+
+function join_dat(src, Vl, D, ϵ, τ) 
+    JDAT_CID = (src, Vl, D, ϵ, τ)
+    return UJL.load_cache(JDAT_CID; verbose = false)
+end
+join_dat(src, Vl, D, ϵ, τ, dkey) = join_dat(src, Vl, D, ϵ, τ)[dkey]  
 
 # ----------------------------------------------------------------------------
 
@@ -146,7 +152,7 @@ mysavefig(p, pname; params...) =
 # Plot functions
 function plot_pol!(p, MODsym, Vl, D, ϵ, τ; sparams...)
     
-    vatp_range, vg_ranges = idxdat([MODsym, :POL], Vl, D, ϵ, τ)
+    vatp_range, vg_ranges = dyn_dat([MODsym, :POL], Vl, D, ϵ, τ)
     vatps, vgLs, vgUs = [], [], []
     
     for (vatpi, vatp) in enumerate(vatp_range)
@@ -175,8 +181,9 @@ function plot_marginals!(p, MODsyms, rxn, Vl, D, ϵ, τ;
     isdelta(M) = length(findall(!isequal(minimum(values(M))), M)) == 1
 
     # std fill
+    # Dynamic
     if draw_dyn
-        DyMs = idxdat([:DyMs], Vl, D, ϵ, τ)
+        DyMs = dyn_dat([:DyMs], Vl, D, ϵ, τ)
         plot!(p, DyMs[rxn]; label = "", alpha = 0.0)
         if draw_va
             av = Dyn.av(DyMs[rxn])
@@ -188,9 +195,10 @@ function plot_marginals!(p, MODsyms, rxn, Vl, D, ϵ, τ;
         end
     end
     
+    # Models
     for MODsym in MODsyms
         color = MOD_COLORS[MODsym]
-        Ms = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
+        Ms = dyn_dat([MODsym, :Ms], Vl, D, ϵ, τ)
         plot!(p, Ms[rxn]; label = "", alpha = 0.0)
         if draw_va && !isdelta(Ms[rxn])
             av = Dyn.av(Ms[rxn])
@@ -203,54 +211,47 @@ function plot_marginals!(p, MODsyms, rxn, Vl, D, ϵ, τ;
     end
 
     # means and std lines
+    # Dynamic
     if draw_dyn
         av = Dyn.av(DyMs[rxn])
         std = sqrt(Dyn.va(DyMs[rxn]))
         draw_va && vline!(p, [av - std, av + std]; 
-            label = "", sparams..., alpha = 0.5,
-            color = :black, ls = :solid, lw = 3
+            label = "", sparams...
         )
-        draw_av && vline!(p, [av]; label = "", sparams..., 
-            color = :black, ls = :solid, lw = 5
-        )
+        draw_av && vline!(p, [av]; label = "", sparams..., ls = :dash, lw = 3)
     end
     
+    # Models
     for MODsym in MODsyms
-        ls = MOD_LS[MODsym] 
-        color = MOD_COLORS[MODsym]
-        Ms = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
+        Ms = dyn_dat([MODsym, :Ms], Vl, D, ϵ, τ)
         if !isdelta(Ms[rxn])
             av = Dyn.av(Ms[rxn])
             std = sqrt(Dyn.va(Ms[rxn]))
+            # @info "Doing" MODsym rxn av std
             draw_va && vline!(p, [av - std, av + std]; 
-                label = "", color, sparams..., 
-                ls, lw = 3, alpha = 0.3
+                label = "", sparams...
             )
-            draw_av && vline!(p, [av]; label = "", color, sparams..., 
-                ls, lw = 5
-            )
+            draw_av && vline!(p, [av]; label = "", sparams..., ls = :dash, lw = 3)
         end
     end
 
     # marginals
     for MODsym in MODsyms
-        ls = MOD_LS[MODsym] 
-        color = MOD_COLORS[MODsym]
-        Ms = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
+        Ms = dyn_dat([MODsym, :Ms], Vl, D, ϵ, τ)
         
         if isdelta(Ms[rxn])
             mx = findfirst(isone, Ms[rxn])
             xlb, xub = (keys(Ms[rxn]),) .|> (minimum, maximum)
             ylb, yub = (values(Ms[rxn]),) .|> (minimum, maximum)
 
-            plot!(p, [xlb, xub], [ylb, ylb]; label = "", color, ls, sparams...)
-            plot!(p, [mx, mx], [ylb, yub]; label = "", color, ls, sparams...)
+            plot!(p, [xlb, xub], [ylb, ylb]; label = "", sparams...)
+            plot!(p, [mx, mx], [ylb, yub]; label = "", sparams...)
         else
-            plot!(p, Ms[rxn]; label = "", color, ls, sparams...)
+            plot!(p, Ms[rxn]; label = "", sparams..., lw = 6)
         end
     end
     draw_dyn && plot!(p, DyMs[rxn]; 
-        label = "", color = :black, sparams..., 
+        label = "", sparams..., lw = 6
     )
 
     return p

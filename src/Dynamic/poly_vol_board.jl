@@ -12,9 +12,6 @@ function poly_vol_board(M, Ds, cgD_Xs;
 
     psize = zeros(length(Ds), length(cgD_Xs))
 
-    biom_idx = M.obj_idx
-    vg_idx = M.vg_idx
-
     # feeding task
     Ch = Channel(nths) do Ch_
         @showprogress for (Di, D) in enumerate(Ds)

@@ -1,4 +1,15 @@
 ## ----------------------------------------------------------------------------
+function closest(v, a)
+    ci = firstindex(a)
+    for i in eachindex(a)
+        if abs(v - a[i]) < abs(v - a[ci])
+            ci = i
+        end
+    end
+    return ci
+end
+
+## ----------------------------------------------------------------------------
 let
     dyn_Ds = []
     dyn_cgD_Xs = []
@@ -36,6 +47,12 @@ let
             xlabel = "poly vol", ylabel = "D"
         )
         mysavefig(p, "eps_vs_poly_vol")
+
+        p = scatter(dyn_Ds, dyn_pol_vols; 
+            color, label = "", m = 8, 
+            xlabel = "D", ylabel = "poly vol"
+        )
+        mysavefig(p, "D_vs_poly_vol")
     end
 
     ## ------------------------------------------------------------

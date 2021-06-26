@@ -30,7 +30,7 @@ module Dynamic
     include("run_simulation_fX.jl")
     include("run_simulation_vg.jl")
     include("marginals.jl")
-    include("idxdat.jl")
+    include("data_acess.jl")
     include("mysavefig.jl")
     include("pos_defined.jl")
     include("yLP.jl")

@@ -16,9 +16,9 @@ let
         # ME_Z_EXPECTED_G_MOVING,
         # ME_Z_FIXXED_G_OPEN, ME_Z_FIXXED_G_BOUNDED, 
         # ME_Z_EXPECTED_G_EXPECTED,
-        FBA_Z_OPEN_G_OPEN, 
-        FBA_Z_OPEN_G_BOUNDED, 
-        FBA_Z_FIXXED_G_OPEN, 
+        # FBA_Z_OPEN_G_OPEN, 
+        # FBA_Z_OPEN_G_BOUNDED, 
+        # FBA_Z_FIXXED_G_OPEN, 
         FBA_Z_FIXXED_G_BOUNDED
     ]
     
@@ -41,8 +41,8 @@ let
             
             for (i, (Vl, D, τ)) in sim_params |> enumerate
                 MINDEX[:STATUS, Vl, D, ϵ, τ] != :stst && continue
-                DyMs = idxdat([:DyMs], Vl, D, ϵ, τ)
-                Ms = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
+                DyMs = dyn_dat([:DyMs], Vl, D, ϵ, τ)
+                Ms = dyn_dat([MODsym, :Ms], Vl, D, ϵ, τ)
                 
                 for rxn in Dyn.RXNS
                     DYN_flx = Dyn.av(DyMs[rxn])
@@ -90,15 +90,15 @@ let
     FLXS = ["vatp", "gt"]
 
     ALL_MODELS = [
-        ME_Z_OPEN_G_OPEN, 
+        # ME_Z_OPEN_G_OPEN, 
         ME_FULL_POLYTOPE,
-        ME_Z_EXPECTED_G_EXPECTED,
-        ME_Z_EXPECTED_G_BOUNDED,
-        ME_Z_FIXXED_G_BOUNDED,
+        # ME_Z_EXPECTED_G_EXPECTED,
+        # ME_Z_EXPECTED_G_BOUNDED,
+        # ME_Z_FIXXED_G_BOUNDED,
 
-        FBA_Z_OPEN_G_OPEN,
-        FBA_Z_OPEN_G_BOUNDED,
-        FBA_Z_FIXXED_G_OPEN, 
+        # FBA_Z_OPEN_G_OPEN,
+        # FBA_Z_OPEN_G_BOUNDED,
+        # FBA_Z_FIXXED_G_OPEN, 
         FBA_Z_FIXXED_G_BOUNDED
     ]
     
@@ -112,7 +112,7 @@ let
 
             # LOAD
             MINDEX[:STATUS, Vl, D, ϵ, τ] != :stst && continue
-            DyMs = idxdat([:DyMs], Vl, D, ϵ, τ)
+            DyMs = dyn_dat([:DyMs], Vl, D, ϵ, τ)
             @info("Collecting", (Vl, D, ϵ, τ))
             
             for flx in FLXS
@@ -126,7 +126,7 @@ let
                     get!(dat, :ys, [])
                     get!(dat, :colors, [])
 
-                    Ms = idxdat([MODsym, :Ms], Vl, D, ϵ, τ)
+                    Ms = dyn_dat([MODsym, :Ms], Vl, D, ϵ, τ)
                     m_vatp = Dyn.av(Ms[flx])
                     # m_vatp = rand() # Test
 
