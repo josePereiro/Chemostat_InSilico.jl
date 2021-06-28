@@ -1,13 +1,6 @@
 # Store network information
 # TODO: echenolize model
 
-const ABS_MAX_BOUND = 1000.0 # abs bound
-const BIOMASS_IDER = "biom"
-const RXNS = [ "gt"  , "ferm" , "resp" , "ldh" ,  "lt" , BIOMASS_IDER , "atpm" , "vatp" ]
-const METS = ["G", "E", "P", "L", "AUX1"]
-const Y = 348 
-const ATPM = 1.0625 # mmol/gDW h
-
 struct MetNet
 
     ## LP (original) 
@@ -24,69 +17,161 @@ end
 MetNet(;S, b, lb, ub, c, rxns, mets) = MetNet(S, b, lb, ub, c, rxns, mets)
 
 ## -------------------------------------------------------------------
-function ToyModel()
-    net = Dict()
+# Utils
+_IDER_TYPE = Union{String, Symbol, Int}
+_IDER_TYPE_STR = Union{String, Symbol}
+_IDER_TYPE_INT = Int
 
-    # Network parameters from 
-    # Fernandez-de-Cossio-Diaz, Jorge, Roberto Mulet, and Alexei Vazquez. (2019) https://doi.org/10.1038/s41598-019-45882-w.
-    Nf = 2.0
-    Nr = 38.0
-    y = -Y        # mmol/gDW
-    Vr = 0.45     # mmol/gDW h
-    Vg = 0.5      # mmol/gDW h
-    atpm = ATPM # mmol/gDW h
+rxnindex(net::MetNet, rxn::_IDER_TYPE_STR) = findfirst(isequal(string(rxn)), net.rxns)
+rxnindex(net::MetNet, rxn::_IDER_TYPE_INT) = findfirst(isequal(rxn), eachindex(net.rxns))
+rxnindex(net::MetNet, rxns::Vector) = rxnindex.([net], rxns)
 
-    net[:S] = 
-    # rxns: gt    ferm  resp  ldh   lt   biom    atpm  vatp    # mets
-    [       1.0  -1.0   0.0   0.0   0.0   0.0    0.0   0.0  ;  #  G
-            0.0    Nf    Nr   0.0   0.0    y    -1.0   0.0  ;  #  E
-            0.0    Nf  -1.0  -1.0   0.0   0.0    0.0   0.0  ;  #  P
-            0.0   0.0   0.0   1.0   1.0   0.0    0.0   0.0  ;  #  L
-            0.0    Nf    Nr   0.0   0.0   0.0    0.0  -1.0  ;  #  AUX1
-    ]
-    
-    net[:mets] = deepcopy(METS)
-    net[:b] =    [0.0, 0.0, 0.0, 0.0, 0.0] # const exchanges
-    
-    AB = ABS_MAX_BOUND
-    net[:rxns] = deepcopy(RXNS)
-    #            [ "gt"  , "ferm" , "resp" , "ldh" ,  "lt" , BIOMASS_IDER , "atpm" , "vatp" ]
-    net[:lb]   = [ 0.0   ,  0.0   ,  0.0   ,  0.0  ,  -AB  ,     0.0      ,  atpm  ,  0.0   ];
-    net[:ub]   = [  Vg   ,  AB    ,   Vr   ,  AB   ,   0.0 ,      AB      ,  atpm  ,  AB    ];
-    net[:c]    = [ 0.0   ,  0.0   ,  0.0   ,  0.0  ,   0.0 ,  MAX_SENSE   ,   0.0  ,  0.0   ];
-    return MetNet(;net...)
+metindex(net::MetNet, met::_IDER_TYPE_STR) = findfirst(isequal(string(met)), net.mets)
+metindex(net::MetNet, met::_IDER_TYPE_INT) = findfirst(isequal(met), eachindex(net.mets))
+metindex(net::MetNet, mets::Vector) = metindex.([net], mets)
+
+rxns(net::MetNet, rxns) = net.rxns[rxnindex(net, rxns)]
+
+## -------------------------------------------------------------------
+function reducebox!(net::MetNet)
+    lb, ub = fva(net)
+    net.lb .= lb
+    net.ub .= ub
+    return net
 end
+_reducebox!(net, reduce) = reduce ? reducebox!(net) : net
+
+function fix!(net::MetNet, rxns, val; reducebox = false)
+    reducebox && reducebox!(net)
+    idxs = rxnindex.([net], rxns); net.lb[idxs] .= net.ub[idxs] .= val; net
+end
+function fixxing(f::Function, net::MetNet, rxns, val; tol = 0.0)
+    idxs = rxnindex.([net], rxns)
+    bk_lb = net.lb[idxs]
+    bk_ub = net.ub[idxs]
+    net.lb[idxs] .= (val .- tol)
+    net.ub[idxs] .= (val .+ tol)
+    try; return f()
+    finally; 
+        net.lb[idxs] .= bk_lb
+        net.ub[idxs] .= bk_ub
+    end
+end
+
+rxnid(net::MetNet, rxn) = net.rxn[rxnindex(net, rxn)]
+lb(net::MetNet, rxn) = net.lb[rxnindex(net, rxn)]
+lb!(net::MetNet, rxn, val; reducebox = false) = 
+    (net.lb[rxnindex(net, rxn)] = val; _reducebox!(net, reducebox))
+ub(net::MetNet, rxn) = net.ub[rxnindex(net, rxn)]
+ub!(net::MetNet, rxn, val; reducebox = false) = 
+    (net.ub[rxnindex(net, rxn)] = val; _reducebox!(net, reducebox))
+bounds!(net::MetNet, rxn, lb, ub; reducebox = false) = 
+    (idx = rxnindex(net, rxn); net.lb[idx] = lb; net.ub[idx] = ub; _reducebox!(net, reducebox))
+bounds(net::MetNet, rxn) = 
+    (idx = rxnindex(net, rxn); (net.lb[idx],  net.ub[idx]))
 
 ## -------------------------------------------------------------------
 # LP
-fba(net::MetNet; solver = CLP_SOLVER) = fba(net.S, net.b, net.lb, net.ub, net.c; solver)
-fba(net::MetNet, objidx, sense = MAX_SENSE; solver = CLP_SOLVER) = 
-    fba(net.S, net.b, net.lb, net.ub, net.c, objidx, sense; solver)
-fva(net::MetNet, idx::Integer; solver = CLP_SOLVER) = 
-    fva(net.S, net.b, net.lb, net.ub, net.c, idx; solver)
-fva(net::MetNet, idxs = eachindex(net.rxns); solver = CLP_SOLVER) = 
-    fva(net.S, net.b, net.lb, net.ub, net.c, idxs; solver)
-Δv(net, idx) = begin lb, ub = fva(net, idx); ub - lb end
-U(net, idx) = begin lb, ub = fva(net, idx); ub end
-L(net, idx) = begin lb, ub = fva(net, idx); lb end
-
-## -------------------------------------------------------------------
-# Utils
-rxnindex(net::MetNet, id) = findfirst(isequal(id), net.rxns)
-metindex(net::MetNet, id) = findfirst(isequal(id), net.rxns)
-fix!(net, idx, val) = net.lb[idx] = net.ub[idx] = val
-function fixxing(f, net, idx, val)
-    bk_lb, bk_ub = net.lb[idx], net.ub[idx]
-    net.lb[idx] = net.ub[idx] = val
-    val = f()
-    net.lb[idx], net.ub[idx] = bk_lb, bk_ub
-    return val
-end
-fixxing(f, net, id::String, val) = fixxing(f, net, rxnindex(net, id), val)
-lb!(net, idx::Int, val) = net.lb[idx] = val
-lb!(net, id::String, val) = lb!(net, rxnindex(net, id), val)
-ub!(net, idx::Int, val) = net.ub[idx] = val
-ub!(net, id::String, val) = ub!(net, rxnindex(net, id), val)
+fba(net::MetNet; kwargs...) = fba(net.S, net.b, net.lb, net.ub, net.c; kwargs...)
+fba(net::MetNet, obj, sense = MAX_SENSE; kwargs...) = 
+    fba(net.S, net.b, net.lb, net.ub, net.c, rxnindex(net, obj), sense; kwargs...)
+fva(net::MetNet, rxns = eachindex(net.rxns); kwargs...) = 
+    fva(net.S, net.b, net.lb, net.ub, net.c, rxnindex.([net], rxns); kwargs...)
+Δv(net, rxns) = ((lb, ub) = fva(net, rxnindex.([net], rxns)); ub - lb)
+U(net, rxns) = ((lb, ub) = fva(net, rxnindex.([net], rxns)); ub)
+L(net, rxns) = ((lb, ub) = fva(net, rxnindex.([net], rxns)); lb)
 
 ## -------------------------------------------------------------------
 Base.hash(net::MetNet) = hash((net.S, net.b, net.lb, net.ub))
+Base.size(net::MetNet) = size(net.S)
+
+## -------------------------------------------------------------------
+function rxn_str(net::MetNet, rxn)
+    ri = rxnindex(net, rxn)
+    rS = net.S[:, ri]
+    
+    reacts = String[]
+    prods = String[]
+    for (mi, ms) in enumerate(rS)
+        mid = net.mets[mi]
+        ms = round(ms; sigdigits = 3)
+        (ms < 0.0) && push!(reacts, string("(", ms, ")", mid))
+        (ms > 0.0) && push!(prods, string("(", ms, ")", mid))
+    end
+
+    reacts_str = join(reacts, " + ")
+    prods_str = join(prods, " + ")
+
+    lb, ub = net.lb[ri], net.ub[ri]
+    arrow = (lb == ub == 0) ? 
+        ">-<" : (lb < 0.0 && ub > 0.0) ? 
+            "<-->" : (lb >= 0.0 && ub > 0.0) ? 
+                "-->" : (lb < 0.0 && ub <= 0.0) ? 
+                    "<--" : "error"
+    
+    
+    string(reacts_str, " ", arrow, " ", prods_str)
+    
+end
+
+## -------------------------------------------------------------------
+function Base.show(io::IO, net::MetNet)
+    
+    println(io, "MetNet: ", size(net))
+
+    M, N = size(net)
+
+    ri_strs = String["ri"; string.(1:N)]
+    rxnid_strs = String["rxnid"]
+    bounds_strs = String["bounds"]
+    rxni_strs = String["rxn str"]
+    for ri in 1:N
+        lb, ub = net.lb[ri], net.ub[ri]
+        lb = round(lb; sigdigits = 3)
+        ub = round(ub; sigdigits = 3)
+        bounds_str = string("[", lb, ", " ,ub, "]")
+        push!(bounds_strs, bounds_str)
+        
+        rid = net.rxns[ri]
+        rxnid_str = string(rid)
+        push!(rxnid_strs, rxnid_str)
+        
+        rxni_str = rxn_str(net, ri)
+        push!(rxni_strs, rxni_str)
+
+    end
+
+    ri_pad = maximum(length.(ri_strs))
+    rxnid_pad = maximum(length.(rxnid_strs))
+    rxni_pad = maximum(length.(rxni_strs))
+    bounds_pad = maximum(length.(bounds_strs))
+    tab = "   "
+    for ri in eachindex(rxnid_strs)
+        println(io, 
+            join([
+                rpad(ri_strs[ri], ri_pad),  
+                rpad(rxnid_strs[ri], rxnid_pad),  
+                rpad(bounds_strs[ri], bounds_pad), 
+                rpad(rxni_strs[ri], rxni_pad)
+            ], tab)
+        )
+    end
+    nothing
+end
+
+Base.show(net::MetNet) = show(stdout, net)
+
+## -------------------------------------------------------------------
+function BoxGrid(net::MetNet, frees::Vector, δs::Vector)
+    idxs = rxnindex.([net], frees)
+    dimdat = []
+    for (idx, free, δ) in zip(idxs, frees, δs)
+        isnothing(idx) && error(free, " not found")
+        id = net.rxns[idx]
+        lb, ub = net.lb[idx], net.ub[idx]
+        push!(dimdat, (Symbol(id), lb, ub, δ))
+    end
+    BoxGrid(dimdat)
+end
+BoxGrid(net::MetNet, frees::Vector, δ::Int) = BoxGrid(net, frees, fill(δ, length(frees)))
+BoxGrid(net::MetNet, δ::Int) = BoxGrid(net, net.rxns, fill(δ, length(net.rxns)))
