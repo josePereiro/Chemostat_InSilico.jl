@@ -19,9 +19,7 @@ struct BoxGrid
         dims_bounds = Tuple[]
         dims_δs = Union{Int, Float64}[]
         for (id, lb, ub, δ) in dat
-            # !(dat isa Tuple && length(dat) == 3) && 
-            #     error("Each dim dat must be a (lb, ub, δ) tuple. At $id got ", dat)
-            (lb >= ub) && 
+            (lb > ub) && 
                 error("Bad bounds, lb >= ub. At $id got ", (lb, ub))
             push!(dims_ids, id)
             push!(dims_bounds, (lb, ub))

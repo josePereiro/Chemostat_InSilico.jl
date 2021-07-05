@@ -1,5 +1,5 @@
 ## -------------------------------------------------------------------
-function ToyModel3D()
+function ToyModel2D()
     net = Dict()
 
     # feistGenomescaleMetabolicReconstruction2007 DOI: 10.1038/msb4100155
@@ -22,10 +22,6 @@ function ToyModel3D()
     # glycolysis, citric acid cycle, and oxidative phosphorylation is 38 (assuming 3 molar 
     # equivalents of ATP per equivalent NADH and 2 ATP per UQH2). 
     REY = (38.0 - GEY)/2 # (Respiratory energy yield) Per acetate molecule
-    # The P/O ration is tuned to make the oxygen uptake compatible with
-    # Varma, (1993): 2465–73. https://doi.org/10.1128/AEM.59.8.2465-2473.1993.
-    # FIG 2
-    RNO = 6.0
 
     # http://ecolistudentportal.org/article_fermentation#_
     # Many fermenting bacteria including E. coli can convert acetyl-CoA to 
@@ -54,26 +50,22 @@ function ToyModel3D()
     Vz = 0.5     # D < 0.5 below the acetate switch [23] Nature, 528(7580):99–104, 2015.
 
     net[:S] = 
-    # rxns:  glyc  resp  ferm  vatp  atpm    ua   z     ug   uo    # mets
-    [       -1.0   0.0   0.0   0.0   0.0    0.0  -GBY  1.0  0.0 ;  #  Glc
-             GEY   REY   0.0   0.0  -NGAM   0.0  -GAM  0.0  0.0 ;  #  Atp
-             GEY  -1.0  -1.0   0.0   0.0    0.0   0.0  0.0  0.0 ;  #  AcCoa
-             0.0   0.0   1.0   0.0   0.0    1.0   0.0  0.0  0.0 ;  #  Ac
-             0.0  -RNO   0.0   0.0   0.0    0.0   0.0  0.0  1.0 ;  #  Oxy
-             GEY   REY   0.0  -1.0   0.0    0.0   0.0  0.0  0.0 ;  #  AUXvatp
+    # rxns:  glyc  resp  ferm  vatp  atpm    ua   z     ug   # mets
+    [       -1.0   0.0   0.0   0.0   0.0    0.0  -GBY  1.0;  #  Glc
+             GEY   REY   0.0   0.0  -NGAM   0.0  -GAM  0.0;  #  Atp
+             GEY  -1.0  -1.0   0.0   0.0    0.0   0.0  0.0;  #  AcCoa
+             0.0   0.0   1.0   0.0   0.0    1.0   0.0  0.0;  #  Ac
+             GEY   REY   0.0  -1.0   0.0    0.0   0.0  0.0;  #  AUXvatp
     ]
-
     
-
-    
-    net[:mets] = ["Glc", "Atp", "AcCoa", "Ac", "Oxy", "AUXvatp"]
-    net[:b] =    [0.0  , 0.0  , 0.0    , 0.0 , 0.0  , 0.0      ] # const exchanges
+    net[:mets] = ["Glc", "Atp", "AcCoa", "Ac", "AUXvatp"]
+    net[:b] =    [0.0  , 0.0  , 0.0    , 0.0 , 0.0      ] # const exchanges
     
     
-    net[:rxns] = [ "glyc" , "resp" , "ferm" , "vatp", "atpm", "ua" ,  "z"  , "ug" ,  "uo" ]
-    net[:lb]   = [ 0.0    , 0.0    , 0.0    , 0.0   , 1.0   , -AB  ,  0.0  , 0.0  ,  0.0  ]
-    net[:ub]   = [ AB     , AB     , AB     , AB    , 1.0   , 0.0  ,  Vz   , Vg   ,  AB   ]
-    net[:c]    = [ 0.0    , 0.0    , 0.0    , 0.0   , 0.0   , 0.0  ,  -1.0 , 0.0  ,  0.0  ]
+    net[:rxns] = [ "glyc" , "resp" , "ferm" , "vatp", "atpm", "ua" ,  "z"  , "ug" ]
+    net[:lb]   = [ 0.0    , 0.0    , 0.0    , 0.0   , 1.0   , -AB  ,  0.0  , 0.0  ]
+    net[:ub]   = [ AB     , AB     , AB     , AB    , 1.0   , 0.0  ,  Vz   , Vg   ]
+    net[:c]    = [ 0.0    , 0.0    , 0.0    , 0.0   , 0.0   , 0.0  ,  -1.0 , 0.0  ]
     
     return reducebox!(MetNet(;net...))
 end

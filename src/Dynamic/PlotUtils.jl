@@ -19,7 +19,7 @@ function plot_frees(net::MetNet, frees;
     polc = 0
 
     cid = ("plot_frees", hash(net), δ, hash(freeis))
-    polV = Ass.lcache(cid; verbose = false) do
+    polV = lcache(cid; verbose) do
         
         polV_ = [Float64[] for id in frees]
 
@@ -87,3 +87,19 @@ function plot_frees(net::MetNet, frees;
     return ps
 
 end
+
+## ------------------------------------------------------
+function plot_marginals(f::Function, V; normalize = true)
+    ps = Plots.Plot[]
+    # marginals
+    freeids = free_ids(V)
+    for id in freeids
+        
+        P = pmf(f, V, id; normalize)
+
+        p = bar(P.domain, P.prob; label = "", xlabel = string(id), color = :black)
+        push!(ps, p)
+    end
+    plot(ps...)
+end
+plot_marginals(V; normalize = true) = plot_marginals((v) -> 1.0, V; normalize)

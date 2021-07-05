@@ -33,7 +33,7 @@ function fva(S, b, lb, ub, c, idx::Integer;  kwargs...)
         L = fba(S, b, lb, ub, c; kwargs...)[idx]
         c[idx] = MAX_SENSE
         U = fba(S, b, lb, ub, c; kwargs...)[idx]
-        return (L, U)
+        return (first(L), first(U))
     finally; c[idx] = bk_c end
 end
 

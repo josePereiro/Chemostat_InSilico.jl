@@ -25,10 +25,12 @@ _IDER_TYPE_INT = Int
 rxnindex(net::MetNet, rxn::_IDER_TYPE_STR) = findfirst(isequal(string(rxn)), net.rxns)
 rxnindex(net::MetNet, rxn::_IDER_TYPE_INT) = findfirst(isequal(rxn), eachindex(net.rxns))
 rxnindex(net::MetNet, rxns::Vector) = rxnindex.([net], rxns)
+rxnindex(net::MetNet, rxns) = rxnindex(net, collect(rxns))
 
 metindex(net::MetNet, met::_IDER_TYPE_STR) = findfirst(isequal(string(met)), net.mets)
 metindex(net::MetNet, met::_IDER_TYPE_INT) = findfirst(isequal(met), eachindex(net.mets))
 metindex(net::MetNet, mets::Vector) = metindex.([net], mets)
+metindex(net::MetNet, mets) = metindex(net, collect(mets))
 
 rxns(net::MetNet, rxns) = net.rxns[rxnindex(net, rxns)]
 
@@ -43,18 +45,19 @@ _reducebox!(net, reduce) = reduce ? reducebox!(net) : net
 
 function fix!(net::MetNet, rxns, val; reducebox = false)
     reducebox && reducebox!(net)
-    idxs = rxnindex.([net], rxns); net.lb[idxs] .= net.ub[idxs] .= val; net
+    idxs = rxnindex(net, rxns); net.lb[idxs] .= net.ub[idxs] .= val; net
 end
 function fixxing(f::Function, net::MetNet, rxns, val; tol = 0.0)
-    idxs = rxnindex.([net], rxns)
+    
+    idxs = rxnindex(net, rxns)
     bk_lb = net.lb[idxs]
     bk_ub = net.ub[idxs]
-    net.lb[idxs] .= (val .- tol)
-    net.ub[idxs] .= (val .+ tol)
+    net.lb[idxs] = (val .- tol)
+    net.ub[idxs] = (val .+ tol)
     try; return f()
     finally; 
-        net.lb[idxs] .= bk_lb
-        net.ub[idxs] .= bk_ub
+        net.lb[idxs] = bk_lb
+        net.ub[idxs] = bk_ub
     end
 end
 
@@ -71,18 +74,57 @@ bounds(net::MetNet, rxn) =
     (idx = rxnindex(net, rxn); (net.lb[idx],  net.ub[idx]))
 
 ## -------------------------------------------------------------------
+_get_elstr(v, i) = i > lastindex(v) ? "" : string(v[i])
+function pretty(;kwargs...)
+    kwargs = collect(kwargs)
+    ks = first.(kwargs)
+    vs = last.(kwargs)
+    # maximum length
+    padl = map(zip(ks, vs)) do (k, v)
+        maxvl = maximum(length.(string.(v)))
+        max(maxvl, length(string(k)))
+    end
+    
+    tab = "   "
+    println(join(rpad.(first.(kwargs), padl), tab))
+    println(join( ["-"].^padl , tab))
+    maxl = maximum(length.(last.(kwargs)))
+    for i in 1:maxl
+        println(join(rpad.(_get_elstr.(vs, i), padl), tab))
+    end
+    
+end
+
+## -------------------------------------------------------------------
+_round(n) = round(n; sigdigits = 3)
+function prettyrxn(net::MetNet, v::Vector, rxns = eachindex(net.rxns))
+    rxns = rxnindex(net, rxns)
+    pretty(;
+        n = collect(eachindex(net.rxns))[rxns], 
+        rxn = net.rxns[rxns], 
+        v = _round.(v)[rxns], 
+        lb = _round.(net.lb)[rxns], 
+        ub = _round.(net.ub)[rxns], 
+        eq = rxn_str.([net], net.rxns)[rxns]
+    )
+end
+
+## -------------------------------------------------------------------
 # LP
 fba(net::MetNet; kwargs...) = fba(net.S, net.b, net.lb, net.ub, net.c; kwargs...)
 fba(net::MetNet, obj, sense = MAX_SENSE; kwargs...) = 
     fba(net.S, net.b, net.lb, net.ub, net.c, rxnindex(net, obj), sense; kwargs...)
 fva(net::MetNet, rxns = eachindex(net.rxns); kwargs...) = 
-    fva(net.S, net.b, net.lb, net.ub, net.c, rxnindex.([net], rxns); kwargs...)
-Δv(net, rxns) = ((lb, ub) = fva(net, rxnindex.([net], rxns)); ub - lb)
-U(net, rxns) = ((lb, ub) = fva(net, rxnindex.([net], rxns)); ub)
-L(net, rxns) = ((lb, ub) = fva(net, rxnindex.([net], rxns)); lb)
+    fva(net.S, net.b, net.lb, net.ub, net.c, rxnindex(net, rxns); kwargs...)
+Δv(net, rxns = eachindex(net.rxns)) = 
+    ((lb, ub) = fva(net, rxnindex(net, rxns)); ub - lb)
+U(net, rxns = eachindex(net.rxns)) = 
+    ((lb, ub) = fva(net, rxnindex(net, rxns)); ub)
+L(net, rxns = eachindex(net.rxns)) = 
+    ((lb, ub) = fva(net, rxnindex(net, rxns)); lb)
 
 ## -------------------------------------------------------------------
-Base.hash(net::MetNet) = hash((net.S, net.b, net.lb, net.ub))
+Base.hash(net::MetNet) = hash((:MetNet, net.S, net.b, net.lb, net.ub))
 Base.size(net::MetNet) = size(net.S)
 
 ## -------------------------------------------------------------------
@@ -160,6 +202,14 @@ function Base.show(io::IO, net::MetNet)
 end
 
 Base.show(net::MetNet) = show(stdout, net)
+
+## -------------------------------------------------------------------
+function is_feasible(net::MetNet, freeis, v; tol::Vector = Δv(net, freeis) .* 0.01)
+    fullv = fixxing(net, freeis, v; tol) do
+        fba(net)
+    end
+    any(fullv .!= 0.0)
+end
 
 ## -------------------------------------------------------------------
 function BoxGrid(net::MetNet, frees::Vector, δs::Vector)
