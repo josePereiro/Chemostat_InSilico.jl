@@ -71,6 +71,12 @@ struct Space{T}
 end
 
 ## ------------------------------------------------------
+function Vi(V::Space, free::Symbol)
+    ci = free_ci(V, free)
+    map((v) -> v[ci], V)
+end
+
+## ------------------------------------------------------
 free_ids(V::Space) = V.box.dims_ids
 free_ids(V::Space, free) = V.box.dims_ids[free_ci(V, free)]
 free_ci(V::Space, freeid::Symbol) = findfirst(isequal(freeid), free_ids(V))
@@ -107,3 +113,5 @@ function Base.show(io::IO, V::Space{T}) where {T}
 end
 Base.show(V::Space) = show(stdout, V)
 
+## ------------------------------------------------------
+Base.empty!(V::Space) = (empty!(V.vec); empty!(V.sortperms); V)

@@ -85,6 +85,7 @@ Base.eltype(P::PMF{T}) where {T} = eltype(P.ter)
 Base.length(P::PMF) = length(P.iter)
 Base.size(P::PMF) = size(P.iter)
 Base.size(P::PMF, dim) = size(P)[dim]
+
 Base.iterate(P::PMF) = iterate(P.iter)
 Base.iterate(P::PMF, state) = iterate(P.iter, state)
 
@@ -105,3 +106,40 @@ function Base.show(io::IO, P::PMF{DT, PT}) where {DT, PT}
 end
 Base.show(P::PMF) = show(stdout, P)
 
+## ------------------------------------------------------
+function sample(pmf::PMF, d::Int)
+    len = length(pmf)
+    step = max(div(len, d), 1)
+    ran = 1:step:len
+    PMF(pmf.domain[ran], pmf.prob[ran])
+end
+
+## ------------------------------------------------------
+function normalize!(P::PMF; tol = 1e-8)
+    Z = sum(P.prob)
+    (abs(Z - 1.0) > tol) && (P.prob .= P.prob ./ Z)
+    P
+end
+
+function _ave(f::Function, P::PMF, ave_::Vector)
+    for i in eachindex(P)
+        v, p = P[i]
+        ave_ .= ave_ .+ (f(v) .* p) 
+    end
+    ave_
+end
+
+function _ave(f::Function, P::PMF, ave_::AbstractFloat)
+    for i in eachindex(P)
+        v, p = P[i]
+        ave_ = ave_ + (f(v) * p) 
+    end
+    ave_
+end
+
+ave(f::Function, P::PMF) = _ave(f, P, zero(f(first(P.domain))))
+ave(P::PMF) = ave(identity, P)
+
+var(f::Function, P::PMF; av = ave(f, P)) = 
+    ave((v) -> (av .- f(v)).^2, P)
+var(P; av = ave(f, P)) = var(identity, P; av)

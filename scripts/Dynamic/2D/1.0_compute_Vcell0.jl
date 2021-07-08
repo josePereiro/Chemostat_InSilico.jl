@@ -11,6 +11,15 @@
 end
 
 ## ------------------------------------------------------
+# common globals
+let
+    Dyn.sglob(;
+        stoitolf = 0.01, 
+        δ = 1000
+    )
+end
+
+## ------------------------------------------------------
 @time let
     # input
     net = Dyn.ToyModel2D()
@@ -18,19 +27,32 @@ end
     
     freeids = [:z, :ug]
     freeis = Dyn.rxnindex(net, freeids)
-    stoitolf = 0.01
-    δ = 1000
+    stoitolf = Dyn.lglob(:stoitolf)
+    δ = Dyn.lglob(:δ)
     
     # container, net, left_freeis, head_freeis, ϵ
-    @info("Building Vcell0")
+    @info("Building Vcell2D")
     @show freeids stoitolf δ
-    Vcell0 = Dyn.Space(net, freeids, δ; stoitolf)
-    Dyn.sglob(;net, Vcell0, stoitolf, freeids, freeis, δ)
+    Vcell2D = Dyn.Space(net, freeids, δ; stoitolf)
+    Dyn.sglob(;Vcell2D)
 
+    Dyn.plot_marginals(Vcell2D; normalize = false)
 end;
 
 ## ------------------------------------------------------
-let
-    Vcell0 = Dyn.lglob(:Vcell0)
-    p = Dyn.plot_marginals(Vcell0; normalize = false)
-end
+@time let
+    # input
+    net = Dyn.ToyModel3D()
+    Dyn.reducebox!(net) # This is important
+    
+    freeids = [:z, :ug, :uo]
+    freeis = Dyn.rxnindex(net, freeids)
+    stoitolf = Dyn.lglob(:stoitolf)
+    δ = Dyn.lglob(:δ)
+    
+    # container, net, left_freeis, head_freeis, ϵ
+    @info("Building Vcell3D")
+    @show freeids stoitolf δ
+    Vcell3D = Dyn.Space(net, freeids, δ; stoitolf)
+    Dyn.sglob(;Vcell3D)
+end;

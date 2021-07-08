@@ -58,3 +58,13 @@ Base.iterate(b::BoxGrid) = iterate(b.iter)
 Base.iterate(b::BoxGrid, state) = iterate(b.iter, state)
 Base.size(b::BoxGrid) = tuple(length.(b.dims_ranges)...)
 Base.size(b::BoxGrid, dim) = size(b)[dim]
+
+## ------------------------------------------------------
+dim_ids(b::BoxGrid) = b.dims_ids
+dim_ids(b::BoxGrid, dim) = b.dims_ids[dim_ci(b, dim)]
+dim_ci(b::BoxGrid, dimid::Symbol) = findfirst(isequal(dimid), dim_ids(b))
+dim_ci(b::BoxGrid, dim::Int) = findfirst(isequal(dim), eachindex(dim_ids(b)))
+dim_ci(b::BoxGrid, dims) = dim_ci.([b], dims)
+
+dim_range(b::BoxGrid, dim) = b.dims_ranges[dim_ci(b, dim)]
+dim_step(b::BoxGrid, dim) = b.dims_steps[dim_ci(b, dim)]

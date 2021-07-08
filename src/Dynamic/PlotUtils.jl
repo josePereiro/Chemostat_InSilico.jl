@@ -89,14 +89,14 @@ function plot_frees(net::MetNet, frees;
 end
 
 ## ------------------------------------------------------
-function plot_marginals(f::Function, V; normalize = true)
+function plot_marginals(f::Function, V; normalize = true, bins = 100)
     ps = Plots.Plot[]
     # marginals
     freeids = free_ids(V)
     for id in freeids
         
         P = pmf(f, V, id; normalize)
-
+        P = sample(P, bins)
         p = bar(P.domain, P.prob; label = "", xlabel = string(id), color = :black)
         push!(ps, p)
     end

@@ -8,19 +8,30 @@ mutable struct Container{T}
         @assert jump_size > 0
         new{T}(Vector{T}(undef, jump_size), jump_size, 1)
     end
+    Container{T}() where {T} = Container{T}(10_000)
 end
 
-function Base.push!(cont::Container{T}, elm::T) where {T}
-    vlen = length(cont.v)
-    if cont.idx <= vlen
-        cont.v[cont.idx] = elm
-        cont.idx += 1
-    else
-        resize!(cont.v, vlen + cont.jump_size)
-        push!(cont, elm)
+function Base.push!(cont::Container{T}, elms::T...) where {T}
+    for elm in elms
+        vlen = length(cont.v)
+        if cont.idx <= vlen
+            cont.v[cont.idx] = elm
+            cont.idx += 1
+        else
+            resize!(cont.v, vlen + cont.jump_size)
+            push!(cont, elm)
+        end
     end
+    return cont
 end
+
+Base.length(cont::Container) = (cont.idx - 1)
+Base.firstindex(cont::Container) = firstindex(cont.v)
+Base.lastindex(cont::Container) = (cont.idx - 1)
+Base.isempty(cont::Container) = (cont.idx == 1)
+Base.empty!(cont::Container) = (empty!(cont.v); cont.idx = 1; cont)
 
 concat!(conts::Container...) = vcat(vec!.(conts)...)
 
+Base.vec(cont::Container) = view(cont.v, 1:(cont.idx - 1))
 vec!(cont::Container) = (resize!(cont.v, cont.idx - 1); cont.v)

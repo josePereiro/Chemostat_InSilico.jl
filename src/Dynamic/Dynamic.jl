@@ -8,9 +8,9 @@ module Dynamic
     import Clp: ClpSolver
     using ProgressMeter
     using Base.Threads
+    using ExtractMacro
+    using Statistics
 
-    include("globals.jl")
-    include("discretize.jl")
     include("BoxGrid.jl")
     include("LP.jl")
     include("MetNets.jl")
@@ -20,9 +20,9 @@ module Dynamic
     include("ChunkedPol.jl")
     include("Space.jl")
     include("Container.jl")
-    include("PMF.jl")
-    # include("subspace.jl")
-    # include("echelon.jl") # WIP
+    include("utils.jl")
+    include("Sim2D.jl")
+    include("subspace.jl")
 
     function __init__()
         Ass.@create_proj_dirs
