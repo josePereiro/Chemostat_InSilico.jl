@@ -2,7 +2,7 @@
     import Chemostat_InSilico
     const Dyn = Chemostat_InSilico.Dynamic
     import Chemostat_InSilico.Dynamic: 
-        Sim2D, run_simD2!, check_stst, hist, n_ave!,
+        SimD2, run_simD2!, check_stst, hist, n_ave_conv!,
         plotsdir, lglob, sglob, Container, vec!
         
     import UtilsJL
@@ -32,7 +32,7 @@ let
     iter = collect(Iterators.product(Ds, ϵs, cgs))
     @threads for (D, ϵ, cg) in iter
 
-        S = Sim2D(;
+        S = SimD2(;
             # Space
             Vcell = lglob(:Vcell2D), 
             # Chemostat
@@ -148,11 +148,11 @@ let
         # plots
         # post process time series
         n = 100
-        ug_avs = n_ave!(vec!(ug_avs), n)
-        cgD_Xs = n_ave!(vec!(cgD_Xs), n)
-        z_avs = n_ave!(vec!(z_avs), n)
-        Xts = n_ave!(vec!(Xts), n)
-        sgts = n_ave!(vec!(sgts), n)
+        ug_avs = n_ave_conv!(vec!(ug_avs), n)
+        cgD_Xs = n_ave_conv!(vec!(cgD_Xs), n)
+        z_avs = n_ave_conv!(vec!(z_avs), n)
+        Xts = n_ave_conv!(vec!(Xts), n)
+        sgts = n_ave_conv!(vec!(sgts), n)
 
         lock(lk) do
 

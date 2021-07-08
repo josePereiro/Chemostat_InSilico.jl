@@ -29,9 +29,10 @@ Base.length(cont::Container) = (cont.idx - 1)
 Base.firstindex(cont::Container) = firstindex(cont.v)
 Base.lastindex(cont::Container) = (cont.idx - 1)
 Base.isempty(cont::Container) = (cont.idx == 1)
-Base.empty!(cont::Container) = (empty!(cont.v); cont.idx = 1; cont)
+Base.empty!(cont::Container) = (empty!(cont.v); cont.idx = firstindex(cont); cont)
 
 concat!(conts::Container...) = vcat(vec!.(conts)...)
 
-Base.vec(cont::Container) = view(cont.v, 1:(cont.idx - 1))
-vec!(cont::Container) = (resize!(cont.v, cont.idx - 1); cont.v)
+Base.vec(cont::Container) = view(cont.v, firstindex(cont):lastindex(cont))
+Base.resize!(cont::Container) = resize!(cont.v, lastindex(cont))
+vec!(cont::Container) = (resize!(cont); cont.v)

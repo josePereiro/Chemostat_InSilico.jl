@@ -1,6 +1,6 @@
 
 ## ------------------------------------------------------
-mutable struct Sim2D
+mutable struct SimD2
     # Space
     V::NamedTuple
 
@@ -20,7 +20,7 @@ mutable struct Sim2D
     z_av::Float64
     P::Vector{Float64}
 
-    function Sim2D(;
+    function SimD2(;
             # Space
             Vcell::Space, 
             # Chemostat

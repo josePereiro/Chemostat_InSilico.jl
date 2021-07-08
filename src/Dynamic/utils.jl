@@ -25,7 +25,7 @@ function hist(Vi, P)
     hist
 end
 
-function n_ave!(v, n; aux = copy(v))
+function n_ave_conv!(v, n; aux = copy(v))
     idx0 = firstindex(v)
     idx1 = lastindex(v)
     for i in eachindex(v)
@@ -34,6 +34,14 @@ function n_ave!(v, n; aux = copy(v))
     end
     return v
 end
+
+function tail_ave(v, n)
+    idx0 = firstindex(v)
+    idx1 = lastindex(v)
+    tail = view(v, max(idx0, idx1 - n):idx0)
+    main(tail)
+end
+
 
 function check_stst(w, th, vs...)
     for v in vs
@@ -50,12 +58,10 @@ end
 ismul(v, m) = iszero(rem(v, m))
 
 function findapproxi(v, r::AbstractRange)
-    v0 = first(r)
-    v1 = last(r)
+    v0, v1 = first(r), last(r)
     (v0 > v1) && error("Only increasing ranges are allowed")
-    !(v0 <= v <= v1) && return nothing
-    s = step(r)
-    return Int(div(v - v0, s, RoundNearest)) + 1
+    idx = Int(div(v - v0, step(r), RoundNearest)) + 1
+    clamp(idx, firstindex(r), lastindex(r))
 end
 
 findapproxv(v, r::AbstractRange) = r[findapproxi(v, r)]

@@ -10,6 +10,7 @@ module Dynamic
     using Base.Threads
     using ExtractMacro
     using Statistics
+    using Random
 
     include("BoxGrid.jl")
     include("LP.jl")
@@ -21,8 +22,10 @@ module Dynamic
     include("Space.jl")
     include("Container.jl")
     include("utils.jl")
-    include("Sim2D.jl")
+    include("SimD2.jl")
+    include("SimD3.jl")
     include("subspace.jl")
+    include("SimTools.jl")
 
     function __init__()
         Ass.@create_proj_dirs

@@ -1,25 +1,30 @@
 # ------------------------------------------------------
-_sep_freeis(freei, freeis...) = (freei, freeis)
+_sep_freeids(freeid, freeids...) = (freeid, freeids)
 
-function _fva_range(net, box, freei)
-    lb, ub = fva(net, freei)
-    ran = dim_range(box, freei)
+function _fva_range(net, box, freeid)
+    lb, ub = fva(net, freeid)
+    ran = dim_range(box, freeid)
     lbi = findapproxi(lb, ran)
     ubi = findapproxi(ub, ran)
     return ran[lbi:ubi]
 end
 
+# remove unfeasibles and trivial
+_is_feasible(net) = any(fba(net) .!= 0.0)
 function _fill_subspace!(containers::Vector, 
-        net, box, left_freeis, head
+        net::MetNet, box, left_freeids, head;
+        filter::Function
     )
     
-    curr_freei, left_freeis = _sep_freeis(left_freeis...)
-    curr_free_range = _fva_range(net, box, curr_freei)
+    curr_freeid, left_freeids = _sep_freeids(left_freeids...)
+    curr_free_range = _fva_range(net, box, curr_freeid)
 
-    if isempty(left_freeis)
+    if isempty(left_freeids)
         # base case
         for cur_freev in curr_free_range
             freev = [head; cur_freev]
+            !filter(net, freev) && continue
+            # all(iszero.(freev)) && continue # remove trivial
             for (vi, containeri) in zip(freev, containers)
                 push!(containeri, vi)
             end
@@ -28,20 +33,20 @@ function _fill_subspace!(containers::Vector,
         # recursive step
         for cur_freev in curr_free_range
             _head = [head; cur_freev]
-            fixxing(net, curr_freei, cur_freev) do
-                _fill_subspace!(containers, net, box, left_freeis, _head)
+            fixxing(net, curr_freeid, cur_freev) do
+                _fill_subspace!(containers, net, box, left_freeids, _head; filter)
             end
         end
     end
 end
 
 # one container per dim
-_build_containers(freeis, jump_size = 10_000) = [Container{Float64}(jump_size) for free in freeis]
+_build_containers(freeids, jump_size = 10_000) = [Container{Float64}(jump_size) for free in freeids]
 
-function _containers_pool_size(freeis, containerss_pool)
-    lens = zeros(Int, length(freeis))
+function _containers_pool_size(freeids, containerss_pool)
+    lens = zeros(Int, length(freeids))
     for containers in containerss_pool
-        for i in eachindex(freeis)
+        for i in eachindex(freeids)
             lens[i] += length(containers[i])
         end
     end
@@ -65,27 +70,27 @@ function _reduce_containers_pool!(containerss_pool)
     end
 end
 
-function subspace(net::MetNet, freeis::Vector{Symbol}, δ::Int; 
+function subspace(net::MetNet, box::BoxGrid, freeids::Vector{Symbol};
+        # stoitof = 0.01, 
+        filter::Function = (net, v) -> true,
         nthrs::Int = nthreads()
     )
 
-    box = BoxGrid(net, freeis, δ)
-
     # Base
-    if length(freeis) == 1
-        _fill_subspace!(_build_containers(freeis), net, box, freeis, Float64[])
+    if length(freeids) == 1
+        _fill_subspace!(_build_containers(freeids), net, box, freeids, Float64[]; filter)
     end
 
-    first_freei, left_freeis = _sep_freeis(freeis...)
-    first_free_range = _fva_range(net, box, first_freei)
+    first_freeid, left_freeids = _sep_freeids(freeids...)
+    first_free_range = _fva_range(net, box, first_freeid)
 
     # recursive step
-    containerss_pool = [_build_containers(freeis) for _ in 1:nthrs]
+    containerss_pool = [_build_containers(freeids) for _ in 1:nthrs]
     nets_pool = [deepcopy(net) for _ in 1:nthrs]
     
     prog = Progress(length(first_free_range); dt = 0.5, desc = "Collecting... ")
     function showvalues() 
-        estimation = sum(_containers_pool_size(freeis, containerss_pool))
+        estimation = sum(_containers_pool_size(freeids, containerss_pool))
         
         return [
             ("polV estimation", estimation), 
@@ -100,8 +105,8 @@ function subspace(net::MetNet, freeis::Vector{Symbol}, δ::Int;
         net_th = nets_pool[thid]
         head = [cur_freev]
 
-        fixxing(net_th, first_freei, cur_freev) do
-            _fill_subspace!(containers, net_th, box, left_freeis, head)
+        fixxing(net_th, first_freeid, cur_freev) do
+            _fill_subspace!(containers, net_th, box, left_freeids, head; filter)
         end
         next!(prog; showvalues)
     end

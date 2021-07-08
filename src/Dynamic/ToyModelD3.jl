@@ -62,16 +62,13 @@ function ToyModel3D()
              0.0  -RNO   0.0   0.0   0.0    0.0   0.0  0.0  1.0 ;  #  Oxy
              GEY   REY   0.0  -1.0   0.0    0.0   0.0  0.0  0.0 ;  #  AUXvatp
     ]
-
-    
-
     
     net[:mets] = ["Glc", "Atp", "AcCoa", "Ac", "Oxy", "AUXvatp"]
     net[:b] =    [0.0  , 0.0  , 0.0    , 0.0 , 0.0  , 0.0      ] # const exchanges
     
     
     net[:rxns] = [ "glyc" , "resp" , "ferm" , "vatp", "atpm", "ua" ,  "z"  , "ug" ,  "uo" ]
-    net[:lb]   = [ 0.0    , 0.0    , 0.0    , 0.0   , 1.0   , -AB  ,  0.0  , 0.0  ,  0.0  ]
+    net[:lb]   = [ 0.0    , 0.0    , 0.0    , 0.0   , 1.0   , -AB  ,  0.0  , 0.0  ,  0.0 ]
     net[:ub]   = [ AB     , AB     , AB     , AB    , 1.0   , 0.0  ,  Vz   , Vg   ,  AB   ]
     net[:c]    = [ 0.0    , 0.0    , 0.0    , 0.0   , 0.0   , 0.0  ,  -1.0 , 0.0  ,  0.0  ]
     
