@@ -2,7 +2,7 @@
 ## ------------------------------------------------------
 mutable struct SimD2
     # Space
-    V::NamedTuple
+    V::Space
 
     # Chemostat
     X::Float64
@@ -16,13 +16,14 @@ mutable struct SimD2
     it::Int
     niters::Int
     dXdt::Float64
-    ug_av::Float64
     z_av::Float64
+    ug_av::Float64
+    cgD_X::Float64
     P::Vector{Float64}
 
     function SimD2(;
             # Space
-            Vcell::Space, 
+            V::Space, 
             # Chemostat
             X::Float64, 
             sg::Float64, 
@@ -34,73 +35,75 @@ mutable struct SimD2
             it::Int = 1, 
             niters::Int = 5000, 
             dXdt::Float64 = 0.0, 
-            ug_av::Float64 = 0.0, 
             z_av::Float64 = 0.0, 
-            P::Vector{Float64} = ones(length(Vcell))
+            ug_av::Float64 = 0.0, 
+            cgD_X::Float64 = 0.0, 
+            P::Vector{Float64} = ones(length(V))
         )
 
         # Space
-        vol = length(Vcell)
-
-        z = Vi(Vcell, :z)
-        Uz = maximum(z)
-        Lz = minimum(z)
-
-        ug = Vi(Vcell, :ug)
-        Uug = maximum(ug)
-        Lug = minimum(ug)
-        
-        V = (;vol, z, Uz, Lz, ug, Uug, Lug)
-        
-        @assert length(P) == vol
+        @assert length(P) == length(V)
         normalize!(P)
 
-        new(V, X, sg, cg, ϵ, Δt, D, it, niters, dXdt, ug_av, z_av, P)
+        new(V, X, sg, cg, ϵ, Δt, D, it, niters, dXdt, z_av, ug_av, cgD_X, P)
     end
 
 end
 
 ## ------------------------------------------------------
-function run_simD2!(S; 
-        dobreak::Function,
-        tranformation::Function,
-        feedback::Function = () -> nothing
-    )
+function run_simD2!(S::SimD2; 
+    dobreak::Function,
+    tranformation::Function,
+    feedback::Function = () -> nothing
+)
 
-    @extract S: V P
+    V = S.V 
+    P = S.P
+    Vz = Vi(V, :z)
+    Vug = Vi(V, :ug)
+
+    normalize!(P)
 
     # globals
     cgD_X = 0.0
     dXidt = similar(P)
-    
-    it0 = S.it - 1
+    loc = similar(P)
+    glob = similar(P)
+    drain = similar(P)
+    vol = length(V)
+
+    it0 = (S.it - 1)
     for _ in it0:S.niters
         S.it += 1
-            
-        # dXidt
-        loc =  (1.0 - S.ϵ) .* V.z .* S.X .* P
-        glo =  S.ϵ * sum(V.z .* S.X .* P) / V.vol
-        drain =  S.D .* S.X .* P
-        dXidt .= (loc .+ glo .- drain) .* S.Δt
+        
+        # dXidt = loc + glob - drain
+        loc .=  (1.0 - S.ϵ) .* Vz .* S.X .* P
+        glob .=  S.ϵ * sum(Vz .* S.X .* P) / vol
+        drain .=  S.D .* S.X .* P
+        dXidt .= (loc .+ glob .- drain) .* S.Δt
 
-        # update
+        # update P
         P .= (P .+ (dXidt ./ S.X)) 
         normalize!(P)
         S.dXdt = sum(dXidt)
+        
+        # update X
         S.X += S.dXdt
         
-        S.ug_av = sum(V.ug .* P)
-        S.z_av = sum(V.z .* P)
-
-        S.sg += (- S.ug_av * S.X + (S.cg - S.sg) * S.D) * S.Δt
-        
         # P transformation
-        cgD_X = S.cg * S.D / S.X
-        if (S.ug_av > cgD_X)
+        S.ug_av = sum(Vug .* P)
+        S.cgD_X = S.cg * S.D / S.X
+        if (S.ug_av > S.cgD_X)
             tranformation()
             normalize!(P)
-            S.ug_av = sum(V.ug .* P)
         end
+
+        # update exchanges
+        S.z_av = sum(Vz .* P)
+        S.ug_av = sum(Vug .* P)
+
+        # update limiting conc
+        S.sg += (- S.ug_av * S.X + (S.cg - S.sg) * S.D) * S.Δt
 
         # feedback
         feedback()
@@ -110,6 +113,6 @@ function run_simD2!(S;
 
     end # for it
 
-    return S
+return S
 
 end

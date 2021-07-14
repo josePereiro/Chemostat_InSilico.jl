@@ -39,7 +39,7 @@ function tail_ave(v, n)
     idx0 = firstindex(v)
     idx1 = lastindex(v)
     tail = view(v, max(idx0, idx1 - n):idx0)
-    main(tail)
+    mean(tail)
 end
 
 

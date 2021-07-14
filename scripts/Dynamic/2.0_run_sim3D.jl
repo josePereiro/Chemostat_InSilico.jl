@@ -31,8 +31,8 @@ let
     Ds = range(0.1, 0.5; length = 50)
     ϵs = range(0.01, 1.0; length = 50)
     cgs = [15.0, Inf]
-    SimD3Id = "SimD3"
-    Dyn.sglob(;Ds, ϵs, SimD3Id)
+    simid = "SimD3"
+    Dyn.sglob(;Ds, ϵs, SimD3 = simid)
         
     lk = ReentrantLock()
     iter = collect(Iterators.product(Ds, ϵs, cgs))
@@ -40,7 +40,7 @@ let
 
         S = SimD3(;
             # Space
-            V = lglob(:Vcell3D), 
+            V = lglob(:Vcell3D),
             # Chemostat
             D, ϵ, cg,
             X = 0.5, 
@@ -58,7 +58,7 @@ let
         simparams = (;S.D, S.ϵ, S.cg)
         
         # status
-        status = get_status(SimD3Id, simparams)
+        status = get_status(simid, simparams)
         (status != UNDONE_SIM_STATUS) && continue
 
         # stst params
@@ -95,26 +95,26 @@ let
             checktime = (S.it > 2 * stst_w) && iszero(rem(S.it, stst_w))
             checktime |= (S.it == S.niters)
             if checktime && check_stst(stst_w, stst_th, vec(Xts))
-                status = set_status(STST_SIM_STATUS, SimD3Id, simparams)
+                status = set_status(STST_SIM_STATUS, simid, simparams)
                 return true
             end
 
             # dead
             if (S.X < dead_Xth) || 
                     ((S.it == S.niters) && isinf(S.cg) && tail_ave(S.z_avs, 50) < S.D)
-                status = set_status(DEAD_SIM_STATUS, SimD3Id, simparams)
+                status = set_status(DEAD_SIM_STATUS, simid, simparams)
                 return true
             end
             # explosion
             if (S.X > exploded_Xth) || 
                     ((S.it == S.niters) && isinf(S.cg) && tail_ave(S.z_avs, 50) > S.D)
-                status = set_status(EXPLODED_SIM_STATUS, SimD3Id, simparams)
+                status = set_status(EXPLODED_SIM_STATUS, simid, simparams)
                 return true
             end
             
             # ended
             if (S.it == S.niters)
-                status = set_status(NITERS_SIM_STATUS, SimD3Id, simparams)
+                status = set_status(NITERS_SIM_STATUS, simid, simparams)
                 return true
             end
 
@@ -172,7 +172,7 @@ let
                         Xts, sgts, z_avts, ug_avts, 
                         uo_avts, cgD_Xts, Pzts, Pugts, Puots
                     )
-                    save_batch(batch, SimD3Id, simparams, S.it)
+                    save_batch(batch, simid, simparams, S.it)
                     empty!.(tseries)
                 end
 
@@ -184,7 +184,7 @@ let
         Uug = maximum(Vug) * 1.1
         tfactor = 1.0
         min_tfactor = 1.0001
-        tfactor_sign = -1.0
+        tfactor_sign = 1.0
         tfactor_step = 0.5
         last_err = 0.0
         function tranformation() 
