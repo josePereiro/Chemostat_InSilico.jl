@@ -5,7 +5,7 @@
         SimD3, run_simD3!, check_stst, hist, 
         n_ave_conv!, tail_ave,
         plotsdir, lglob, sglob, Container, vec!, Vi, 
-        normalize!, save_sim,
+        normalizeP!, save_sim,
         set_status, get_status, 
         load_batch, save_batch,
         UNDONE_SIM_STATUS, DEAD_SIM_STATUS, 
@@ -191,7 +191,7 @@ let
             @extract S: it cg D ug_av X cgD_X
             
             P .= P .* (tfactor .- (Vug ./ Uug))
-            normalize!(P)
+            normalizeP!(P)
             ug_av = sum(Vug .* P)
             
             # check tolerance

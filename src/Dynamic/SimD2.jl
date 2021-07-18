@@ -43,7 +43,7 @@ mutable struct SimD2
 
         # Space
         @assert length(P) == length(V)
-        normalize!(P)
+        normalizeP!(P)
 
         new(V, X, sg, cg, ϵ, Δt, D, it, niters, dXdt, z_av, ug_av, cgD_X, P)
     end
@@ -62,7 +62,7 @@ function run_simD2!(S::SimD2;
     Vz = Vi(V, :z)
     Vug = Vi(V, :ug)
 
-    normalize!(P)
+    normalizeP!(P)
 
     # globals
     cgD_X = 0.0
@@ -84,7 +84,7 @@ function run_simD2!(S::SimD2;
 
         # update P
         P .= (P .+ (dXidt ./ S.X)) 
-        normalize!(P)
+        normalizeP!(P)
         S.dXdt = sum(dXidt)
         
         # update X
@@ -95,7 +95,7 @@ function run_simD2!(S::SimD2;
         S.cgD_X = S.cg * S.D / S.X
         if (S.ug_av > S.cgD_X)
             tranformation()
-            normalize!(P)
+            normalizeP!(P)
         end
 
         # update exchanges
@@ -104,6 +104,7 @@ function run_simD2!(S::SimD2;
 
         # update limiting conc
         S.sg += (- S.ug_av * S.X + (S.cg - S.sg) * S.D) * S.Δt
+        S.sg = max(S.sg, 0.0)
 
         # feedback
         feedback()

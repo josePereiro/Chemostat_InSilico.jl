@@ -45,7 +45,7 @@ mutable struct SimD3
 
         # Space
         @assert length(P) == length(V)
-        normalize!(P)
+        normalizeP!(P)
 
         new(V, X, sg, cg, ϵ, Δt, D, it, niters, dXdt, z_av, ug_av, uo_av, cgD_X, P)
     end
@@ -72,7 +72,7 @@ function run_simD3!(S::SimD3;
     Vug = Vi(V, :ug)
     Vuo = Vi(V, :uo)
 
-    normalize!(P)
+    normalizeP!(P)
 
     # globals
     cgD_X = 0.0
@@ -94,7 +94,7 @@ function run_simD3!(S::SimD3;
 
         # update P
         P .= (P .+ (dXidt ./ S.X)) 
-        normalize!(P)
+        normalizeP!(P)
         S.dXdt = sum(dXidt)
         
         # update X
@@ -105,7 +105,7 @@ function run_simD3!(S::SimD3;
         S.cgD_X = S.cg * S.D / S.X
         if (S.ug_av > S.cgD_X)
             tranformation()
-            normalize!(P)
+            normalizeP!(P)
         end
 
         # update exchanges

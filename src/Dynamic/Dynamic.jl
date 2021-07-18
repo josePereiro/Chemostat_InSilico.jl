@@ -26,6 +26,7 @@ module Dynamic
     include("SimD3.jl")
     include("subspace.jl")
     include("SimTools.jl")
+    include("STST.jl")
 
     function __init__()
         Ass.@create_proj_dirs

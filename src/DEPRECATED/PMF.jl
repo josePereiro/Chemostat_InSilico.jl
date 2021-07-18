@@ -115,7 +115,7 @@ function sample(pmf::PMF, d::Int)
 end
 
 ## ------------------------------------------------------
-function normalize!(P::PMF; tol = 1e-8)
+function normalizeP!(P::PMF; tol = 1e-8)
     Z = sum(P.prob)
     (abs(Z - 1.0) > tol) && (P.prob .= P.prob ./ Z)
     P

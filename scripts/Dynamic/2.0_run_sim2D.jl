@@ -2,15 +2,16 @@
     import Chemostat_InSilico
     const Dyn = Chemostat_InSilico.Dynamic
     import Chemostat_InSilico.Dynamic: 
-        SimD2, run_simD2!, check_stst, hist, 
+        SimD2, run_simD2!, hist, 
         n_ave_conv!, tail_ave,
         plotsdir, lglob, sglob, Container, vec!, Vi, 
-        normalize!, save_sim,
+        normalizeP!, simdat_file, batch_file,
         set_status, get_status,
-        load_batch, save_batch,
+        save_batch, save_bfiles, save_simdat,
         UNDONE_SIM_STATUS, DEAD_SIM_STATUS,
         EXPLODED_SIM_STATUS, NITERS_SIM_STATUS, 
-        STST_SIM_STATUS, reset!
+        STST_SIM_STATUS, reset!, 
+        STST, is_steady
         
     import UtilsJL
     const PltU = UtilsJL.PlotsUtils
@@ -28,12 +29,15 @@ end
 
 ## ------------------------------------------------------
 let
-    # Ds = range(0.1, 0.5; length = 8)
-    # ϵs = range(0.01, 1.0; length = 8)
-    # cgs = [15.0, Inf]
-    Ds = [2.71e-01]
-    cgs = [1.50e+01] 
-    ϵs = [1.00e+00]
+    Ds = range(0.1, 0.5; length = 8)
+    ϵs = range(0.01, 1.0; length = 8)
+    cgs = [15.0, Inf]
+    
+    # # test
+    # Ds = [2.71e-01]
+    # cgs = [1.50e+01]
+    # ϵs = [1.00e+00]
+
     simid = "SimD2"
     Dyn.sglob(;Ds, ϵs, cgs, SimD2Id = simid)
     
@@ -49,7 +53,9 @@ let
         thid = threadid()
 
         for (simi, (D, ϵ, cg)) in Ch
-
+            
+            # ---------------------------------------------------------------
+            # sim globals
             # SimD2
             S = SimD2(;
                 # Space
@@ -59,7 +65,7 @@ let
                 X = 0.5, 
                 sg = cg,
                 Δt = 0.05,
-                niters = 15000
+                niters = 10000
             )
 
             V = S.V 
@@ -73,35 +79,38 @@ let
             batch_files = String[]
             
             # status
-            status = get_status(simid, simparams)
-            # (status != UNDONE_SIM_STATUS) && continue # Test
+            status = get_status(simid, simparams) 
+            # status = UNDONE_SIM_STATUS # Test
+            (status != UNDONE_SIM_STATUS) && continue 
 
-            # stst params
-            stst_max_X = -1
-            stst_X_acc = 0.0
-            stst_last_it = 0
-            stst_w = 2000
-            stst_th = 0.01
             # exploded th
-            exploded_Xth = 1e4
-            dead_Xth = 1e-4
+            exploded_Xth = 1e2
+            dead_Xth = 5e-2
+            z_D_diff_th = 0.05
 
             # time series
             push_frec = 10
             save_frec = 100 * push_frec
-            Xts = Container{Float64}()
-            sgts = Container{Float64}()
-            z_avts = Container{Float64}()
-            ug_avts = Container{Float64}()
-            cgD_Xts = Container{Float64}()
 
-            Pzts = Container{Dict{Float64, Float64}}()
-            Pugts = Container{Dict{Float64, Float64}}()
+            Xts = Float64[]
+            sgts = Float64[]
+            z_avts = Float64[]
+            ug_avts = Float64[]
+            cgD_Xts = Float64[]
+
+            Pzts = Dict{Float64, Float64}[]
+            Pugts = Dict{Float64, Float64}[]
 
             tseries = [Xts, sgts, z_avts, ug_avts, cgD_Xts, Pzts, Pugts]
 
+            # stst params
+            stst_w = 300
+            stst_th = 0.01
+            nbuffs = length((:X, :z, :sg, :ug))
+            stst = STST(nbuffs, stst_w)
+
             # Info
-            info_frec = 50
+            info_frec = 250
             _time = time()
             eltime = 0.0
 
@@ -113,40 +122,25 @@ let
                 # niter
                 isniter = (S.it >= S.niters)
                 
-                # z_tave
-                dotave = (!isempty(z_avts) && isniter)
-                z_tave = dotave ? tail_ave(vec(z_avts), 50) : 0.0
-                
                 # stst
-                stst_X_acc += S.X
-                stst_max_X = max(stst_max_X, S.X)
-                dostst1 = isniter && ((S.it - stst_last_it) > stst_w / 2)
-                dostst2 = (S.it > 2 * stst_w) && iszero(rem(S.it, stst_w))
+                push!(stst, S.X, S.z_av, S.sg, S.ug_av)
+                dostst1 = isniter
+                dostst2 = (S.it >= 2 * stst_w) && iszero(rem(S.it, stst_w))
                 dostst = dostst1 || dostst2
-                isstst = dostst && let
-                    # check X stst
-                    av_X_ = stst_X_acc / (S.it - stst_last_it)
-                    rel_Xdiff_ = abs(av_X_ - S.X) / stst_max_X
-                    isstst_ = rel_Xdiff_ < stst_th
+                isstst = dostst && is_steady(stst, stst_th)
 
-                    @info("At isstst check", thid, S.it, rel_Xdiff_, stst_th, isstst_)
-
-                    # reset
-                    stst_X_acc = 0.0
-                    stst_last_it = S.it
-                    
-                    # reset
-                    isstst_
-                end
+                # z_tave
+                dotave = !isempty(z_avts) && (isniter || isstst)
+                z_tave = dotave ? tail_ave(vec(z_avts), 25) : S.z_av
                 
                 # dead
                 isdead1 = (S.X < dead_Xth)
-                isdead2 = (isniter && isinf(S.cg) && z_tave < S.D)
+                isdead2 = (isstst || isniter) && ((S.D - z_tave) / S.D) > z_D_diff_th
                 isdead = isdead1 || isdead2
 
                 # explosion
                 isexplosion1 = (S.X > exploded_Xth)
-                isexplosion2 = (isniter && isinf(S.cg) && z_tave > S.D)
+                isexplosion2 = (isstst || isniter) && ((z_tave - S.D) / S.D) > z_D_diff_th
                 isexplosion = isexplosion1 || isexplosion2
                 
                 # ended
@@ -170,12 +164,17 @@ let
 
             # ---------------------------------------------------------------
             # print_info
+            _round(v) = round(v; sigdigits = 4)
             function print_info(msg::String)
                 @extract S: it cg D ϵ z_av X dXdt sg ug_av cgD_X
 
+                
                 # Info
                 zdiff = abs(z_av - D)
                 ugdiff = abs(ug_av - cgD_X)
+                tug_relerr = ugdiff / cgD_X
+                D, z_av, zdiff = _round.([D, z_av, zdiff])
+                ug_av, cgD_X, ugdiff = _round.([ug_av, cgD_X, ugdiff])
                 @info(msg,
                     (simi, tot_sims),
                     it, thid,
@@ -185,7 +184,7 @@ let
                     (ug_av, cgD_X, ugdiff),
                     X, dXdt, 
                     sg, isbreak,
-                    tfactor, last_err,
+                    tfactor, tug_relerr,
                     eltime
                 )
             end
@@ -219,49 +218,76 @@ let
                     dosave = isbreak
                     dosave |= iszero(rem(it, save_frec))
                     if dosave
-                        resize!.(tseries)
-                        batch = (; 
+                        batchdat = (; 
                             push_frec, 
                             Xts, sgts, z_avts, ug_avts, 
                             cgD_Xts, Pzts, Pugts
                         )
-                        save_batch(batch, simid, simparams, S.it)
-                        reset!.(tseries)
-                    end
 
+                        bfile = save_batch(batchdat, simid, simparams, S.it)
+                        push!(batch_files, bfile)
+
+                        empty!.(tseries)
+                    end
                 end
             end
 
-            # ------------------------------------------------------
-            # tranformation
+            # ---------------------------------------------------------------
+            # P tranformation 
+            # globals
             Uug = maximum(Vug) * 1.1
             tkernel = (Vug ./ Uug)
+            tauxP = similar(P)
             tfactor = 1.0
-            min_tfactor = 1.0001
-            tfactor_sign = 1.0
-            tfactor_step = 0.5
-            last_err = 0.0
-            function tranformation() 
-                @extract S: it cg D ug_av X cgD_X
-                isinf(cg) && return
-                
-                P .= P .* (tfactor .- tkernel)
-                normalize!(P)
-                ug_av = sum(Vug .* P)
-                
-                # check tolerance
-                err = abs(ug_av - cgD_X) / cgD_X
-                
-                # move if too much or too few
-                (err > last_err) && (tfactor_sign *= -1.0)
-                tfactor += tfactor_sign * tfactor_step * err
+            min_tfactor = 1.001
+            gdth = 1e-3
+            gd_err = 0.0
+            
+            # gd fun
+            function gd_up_fun(gdmodel) 
+                @extract S: ug_av cgD_X
+
+                tfactor = UtilsJL.SimulationUtils.gd_value(gdmodel)
                 tfactor = max(min_tfactor, tfactor)
+                tauxP .= S.P .* (tfactor .- tkernel)
+                normalizeP!(tauxP)
+                ug_av_ = sum(Vug .* tauxP)
 
-                # check if not working
-                iszero(rem(S.it, 100)) && 
-                    (err > 0.03) ? (tfactor_step *= 1.5) : (tfactor_step *= 0.5)
+                gd_err = ((cgD_X - ug_av_) / cgD_X)
 
-                last_err = err
+                return ug_av_
+            end
+
+            gd_break_cond(gdmodel) = (gd_err > 0.0 && gd_err < gdth)
+
+            function tranformation() 
+                @extract S: simit=it cg ug_av X cgD_X
+                isinf(cg) && return
+
+                # set up gradient descend
+                tauxP .= P
+                maxΔx = 5.0
+                x0 = tfactor * 0.9
+                x1 = tfactor
+                target = cgD_X 
+                maxiter = 100
+                verbose = false
+
+                gdmodel_ = UtilsJL.SimulationUtils.grad_desc(gd_up_fun; 
+                    break_cond = gd_break_cond,
+                    target, x0, x1, maxΔx, gdth, maxiter, verbose
+                )
+                gdit = gdmodel_.iter
+
+                # update P
+                S.P .= tauxP
+
+                # info
+                showinfo = iszero(rem(simit, info_frec))
+                showinfo && @info("At transformation", 
+                    thid, simit, gdit, tfactor, gd_err
+                )
+                
             end
 
             # ------------------------------------------------------
@@ -278,7 +304,8 @@ let
 
             # ------------------------------------------------------
             # save sim
-            save_sim(S, simid, simparams)
+            save_simdat(S, simid, simparams)
+            save_bfiles(batch_files, simid, simparams)
 
             # ------------------------------------------------------
             # info

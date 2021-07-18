@@ -98,7 +98,7 @@ function marginal_plots(f::Function, V; normalize = true, bins = length(V))
         Vi_ = Vi(V, id)
         Vi_ = view(Vi_, ridxs)
         P = f.(Vi_)
-        normalize && normalize!(P)
+        normalize && normalizeP!(P)
         p = bar(hist(Vi_, P); label = "", xlabel = string(id), color = :black)
         push!(ps, p)
     end

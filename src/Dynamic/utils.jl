@@ -1,7 +1,7 @@
 ## ------------------------------------------------------
 # utils
 red_resolution(v, n::Int) = v[begin:max(div(end, n), 1):end]
-normalize!(P::AbstractVector; tol = 1e-5) = (Z = sum(P); (abs(Z - 1.0) > tol) && (P .= P ./ Z); P)
+normalizeP!(P::AbstractVector; tol = 1e-5) = (Z = sum(P); (abs(Z - 1.0) > tol) && (P .= P ./ Z); P)
 
 function chuncks(v, c::Int)
     vlen = length(v)
