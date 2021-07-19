@@ -184,9 +184,9 @@ version = "1.7.0"
 
 [[DataFileNames]]
 deps = ["Printf"]
-git-tree-sha1 = "9c2c8a51f74f1cacb3582f622133c25cb1d5b620"
+git-tree-sha1 = "6b2cdd9dc21fb6f87ceab463fd38e3393ac9527d"
 uuid = "82dba31a-8ab6-430f-a22d-9cbb81344561"
-version = "0.3.2"
+version = "0.3.3"
 
 [[DataStructures]]
 deps = ["Compat", "InteractiveUtils", "OrderedCollections"]
@@ -1106,9 +1106,9 @@ uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 
 [[UtilsJL]]
 deps = ["BSON", "Colors", "DataFileNames", "Dates", "Distributed", "DrWatson", "FileIO", "FixedPointNumbers", "Images", "Logging", "Plots", "Printf", "ProgressMeter", "Requires", "Serialization", "SparseArrays", "Statistics"]
-git-tree-sha1 = "11b8b49687798c36c87a1a2f30e13462b72742e8"
+git-tree-sha1 = "6621e52f37a36746dd84e7f3ca7d7aca3a364d36"
 uuid = "1d417f3e-fd42-11ea-18da-dda57c9b97b2"
-version = "0.8.2"
+version = "0.8.3"
 
 [[Wayland_jll]]
 deps = ["Artifacts", "Expat_jll", "JLLWrappers", "Libdl", "Libffi_jll", "Pkg", "XML2_jll"]
