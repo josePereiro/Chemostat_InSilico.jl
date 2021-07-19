@@ -77,9 +77,9 @@ function run_simD2!(S::SimD2;
         S.it += 1
         
         # dXidt = loc + glob - drain
-        loc .=  (1.0 - S.ϵ) .* Vz .* S.X .* P
-        glob .=  S.ϵ * sum(Vz .* S.X .* P) / vol
-        drain .=  S.D .* S.X .* P
+        loc .= (1.0 - S.ϵ) .* Vz .* S.X .* P
+        glob .= S.ϵ * sum(Vz .* S.X .* P) / vol
+        drain .= S.D .* S.X .* P
         dXidt .= (loc .+ glob .- drain) .* S.Δt
 
         # update P
@@ -103,7 +103,7 @@ function run_simD2!(S::SimD2;
         S.ug_av = sum(Vug .* P)
 
         # update limiting conc
-        S.sg += (- S.ug_av * S.X + (S.cg - S.sg) * S.D) * S.Δt
+        S.sg += (-S.ug_av * S.X + (S.cg - S.sg) * S.D) * S.Δt
         S.sg = max(S.sg, 0.0)
 
         # feedback
@@ -114,6 +114,6 @@ function run_simD2!(S::SimD2;
 
     end # for it
 
-return S
+    return S
 
 end

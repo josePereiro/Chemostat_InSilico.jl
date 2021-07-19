@@ -1,8 +1,9 @@
+using Plots: length
 @time begin 
    import Chemostat_InSilico
    const Dyn = Chemostat_InSilico.Dynamic
    import Chemostat_InSilico.Dynamic: 
-      SimD2, run_simD2!, check_stst, hist, 
+      SimD3, run_simD3!, check_stst, hist, 
       n_ave_conv!, tail_ave,
       plotsdir, lglob, sglob, Container, vec!, Vi, 
       normalizeP!, 
@@ -20,7 +21,7 @@
 
    using Plots
    import GR
-   GR.inline("png")
+   !isinteractive() && GR.inline("png")
 
    using Base.Threads
    using ProgressMeter
@@ -34,11 +35,11 @@
 end
 
 # ------------------------------------------------------
-# batch = (; push_frec, Xts, sgts, z_avts, ug_avts, cgD_Xts, Pzts, Pugts)
-Ds, ϵs, cgs, simid = Dyn.lglob(:Ds, :ϵs, :cgs, :SimD2Id)
+# batch = (; push_frec, Xts, sgts, z_avts, ug_avts, uo_avts, cgD_Xts, Pzts, Pugts, Puots)
+Ds, ϵs, cgs, simid = Dyn.lglob(:Ds, :ϵs, :cgs, :SimD3Id)
 
 ## ------------------------------------------------------
-# include("3.1_sim2D_evolution.jl")
+include("3.1_sim3D_evolution.jl")
 
 # ## ------------------------------------------------------
 

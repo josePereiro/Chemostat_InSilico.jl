@@ -9,6 +9,7 @@ const STATUS_FILE_EXT = ".status.jls"
 const BATCH_FILE_EXT = ".batch.jls"
 const SIM_FILE_EXT = ".simdat.jls"
 const BFILES_FILE_EXT = ".bfiles.jls"
+const ME_FILE_EXT = ".maxent.jls"
 
 ## ------------------------------------------------------
 # utils
@@ -23,18 +24,26 @@ save_bfiles(bfiles, simid, simparams) = sdat(bfiles, bfiles_file(simid, simparam
 load_bfiles(simid, simparams) = ldat(bfiles_file(simid, simparams); verbose = false)
 
 ## ------------------------------------------------------
-# save batch
+# batch
 batch_file(simid, simparams, it) = procdir(simid, simparams, (;it), BATCH_FILE_EXT)
 save_batch(dat, simid, simparams, it) = 
    (bfile = batch_file(simid, simparams, it); sdat(dat, bfile; verbose = false); bfile)
 load_batch(simid, simparams, it) = ldat(batch_file(simid, simparams, it); verbose = false)
 
 ## ------------------------------------------------------
-# save sim
+# simdat
 simdat_file(simid, simparams) = procdir(simid, simparams, SIM_FILE_EXT)
 save_simdat(S, simid, simparams) = sdat(S, simdat_file(simid, simparams); verbose = false)
 load_simdat(simid, simparams) = ldat(simdat_file(simid, simparams); verbose = false)
 
+## ------------------------------------------------------
+# maxent
+maxent_file(simid, MEmode, simparams) = 
+   procdir(simid, simparams, (;MEmode = string(MEmode)), ME_FILE_EXT)
+save_maxent(dat, simid, MEmode, simparams) = 
+   sdat(dat, maxent_file(simid, MEmode, simparams); verbose = false)
+load_maxent(simid, MEmode, simparams) = 
+   ldat(maxent_file(simid, MEmode, simparams); verbose = false)
 
 ## ------------------------------------------------------
 function inparams(nparams::Dict; qparams...)

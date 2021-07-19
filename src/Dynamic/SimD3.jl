@@ -115,6 +115,7 @@ function run_simD3!(S::SimD3;
 
         # update limiting conc
         S.sg += (- S.ug_av * S.X + (S.cg - S.sg) * S.D) * S.Δt
+        S.sg = max(S.sg, 0.0)
 
         # feedback
         feedback()

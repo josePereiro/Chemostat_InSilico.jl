@@ -19,11 +19,11 @@ let
             elseif status == EXPLODED_SIM_STATUS
                 X = 1e4
             elseif status == DEAD_SIM_STATUS
-                X = 1e-4
+                X = 0.0
             else
                 error("Unexpected status: ", status)
             end
-
+            
             mat[Ds_idxs[D], ϵs_idxs[ϵ]] = X
         end
 

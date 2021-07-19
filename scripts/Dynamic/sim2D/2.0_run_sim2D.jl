@@ -32,11 +32,6 @@ let
     Ds = range(0.1, 0.5; length = 8)
     ϵs = range(0.01, 1.0; length = 8)
     cgs = [15.0, Inf]
-    
-    # # test
-    # Ds = [2.71e-01]
-    # cgs = [1.50e+01]
-    # ϵs = [1.00e+00]
 
     simid = "SimD2"
     Dyn.sglob(;Ds, ϵs, cgs, SimD2Id = simid)
@@ -49,6 +44,11 @@ let
         end
     end
 
+    # Space
+    V = lglob(:Vcell2D)
+    Vz = Vi(V, :z)
+    Vug = Vi(V, :ug)
+
     @threads for _ in 1:nthreads()
         thid = threadid()
 
@@ -59,7 +59,7 @@ let
             # SimD2
             S = SimD2(;
                 # Space
-                V = lglob(:Vcell2D),
+                V,
                 # Chemostat
                 D, ϵ, cg,
                 X = 0.5, 
@@ -68,10 +68,7 @@ let
                 niters = 10000
             )
 
-            V = S.V 
             P = S.P
-            Vz = Vi(V, :z)
-            Vug = Vi(V, :ug)
 
             simparams = (;S.D, S.ϵ, S.cg)
             
