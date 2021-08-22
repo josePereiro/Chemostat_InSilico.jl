@@ -1,7 +1,7 @@
 name = "Chemostat_InSilico"
 uuid = "d43f3d26-279f-4b31-985f-d16d95e3278a"
 authors = ["josePereiro <jose.pereiro.lab@gmail.com> and contributors"]
-version = "0.1.0"
+version = "0.2.0"
 
 [deps]
 ArgParse = "c7e460c6-2fb9-53a9-8c5b-16f535851c63"

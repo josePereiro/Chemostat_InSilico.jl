@@ -6,8 +6,4 @@ module Chemostat_InSilico
 
     include("Dynamic/Dynamic.jl")
 
-    function __init__()
-        PjAss.@create_proj_dirs
-    end
-
 end
