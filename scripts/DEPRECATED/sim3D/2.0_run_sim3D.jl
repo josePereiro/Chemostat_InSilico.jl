@@ -4,7 +4,7 @@
     import Chemostat_InSilico.Dynamic: 
         SimD3, run_simD3!, hist, 
         n_ave_conv!, tail_ave,
-        plotsdir, lglob, sglob, Container, vec!, Vi, 
+        Container, vec!, Vi, 
         normalizeP!, simdat_file, batch_file,
         set_status, get_status,
         save_batch, save_bfiles, save_simdat,
@@ -251,7 +251,7 @@ let
             function gd_up_fun(gdmodel) 
                 @extract S: ug_av cgD_X
 
-                tfactor = UtilsJL.SimulationUtils.gd_value(gdmodel)
+                tfactor = gd_value(gdmodel)
                 tfactor = max(min_tfactor, tfactor)
                 tauxP .= S.P .* (tfactor .- tkernel)
                 normalizeP!(tauxP)
@@ -277,7 +277,7 @@ let
                 maxiter = 100
                 verbose = false
 
-                gdmodel_ = UtilsJL.SimulationUtils.grad_desc(gd_up_fun; 
+                gdmodel_ = grad_desc(gd_up_fun; 
                     break_cond = gd_break_cond,
                     target, x0, x1, maxΔx, gdth, maxiter, verbose
                 )

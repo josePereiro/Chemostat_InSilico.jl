@@ -4,7 +4,7 @@
     import Chemostat_InSilico.Dynamic: 
         SimD3, run_simD3!, check_stst, hist, 
         n_ave_conv!, tail_ave,
-        plotsdir, lglob, sglob, Container, vec!, Vi, 
+        Container, vec!, Vi, 
         normalizeP!, 
         save_simdat, load_simdat, simdat_file,
         set_status, get_status,
@@ -167,7 +167,7 @@ let
             function gd_a_upfun!(gdmodel)
 
                 gditer = gdmodel.iter
-                z_beta = UtilsJL.SimulationUtils.gd_value(gdmodel)
+                z_beta = gd_value(gdmodel)
 
                 PME .= exp.(z_beta .* (Vz .- z0)) .* exp.(ug_beta .* (Vug .- ug0))
                 normalizeP!(PME)
@@ -179,11 +179,11 @@ let
                 return z_avPME
             end
 
-            gdmodel = UtilsJL.SimulationUtils.grad_desc(gd_a_upfun!; gdth, 
+            gdmodel = grad_desc(gd_a_upfun!; gdth, 
                 target, x0, x1, maxΔx, 
                 maxiter = gd_maxiter, verbose = false
             )
-            z_beta = UtilsJL.SimulationUtils.gd_value(gdmodel)
+            z_beta = gd_value(gdmodel)
 
             gd_z_info()
             
@@ -209,7 +209,7 @@ let
                 function ug_ug_upfun!(gdmodel)
 
                     gditer = gdmodel.iter
-                    ug_beta = UtilsJL.SimulationUtils.gd_value(gdmodel)
+                    ug_beta = gd_value(gdmodel)
 
                     PME .= exp.(z_beta .* (Vz .- z0)) .* exp.(ug_beta .* (Vug .- ug0))
                     normalizeP!(PME)
@@ -220,11 +220,11 @@ let
                     return ug_avPME 
                 end
 
-                gdmodel = UtilsJL.SimulationUtils.grad_desc(ug_ug_upfun!; gdth, 
+                gdmodel = grad_desc(ug_ug_upfun!; gdth, 
                     target, x0, x1, maxΔx, 
                     maxiter = gd_maxiter, verbose = false
                 )
-                ug_beta = UtilsJL.SimulationUtils.gd_value(gdmodel)
+                ug_beta = gd_value(gdmodel)
             end
 
             gd_ug_info()
@@ -319,7 +319,7 @@ end
 #         PME = Dyn.get_join(M)
 #         function gd_a_upfun!(gdmodel)
             
-#             z_beta = UtilsJL.SimulationUtils.gd_value(gdmodel)
+#             z_beta = gd_value(gdmodel)
 
 #             PME = Dyn.get_join!(M, PME) do vatp_, ug_
 #                 exp(z_beta * z(vatp_, ug_))
@@ -341,11 +341,11 @@ end
 #             return z_avPME
 #         end
 
-#         gdmodel = UtilsJL.SimulationUtils.grad_desc(gd_a_upfun!; gdth, 
+#         gdmodel = grad_desc(gd_a_upfun!; gdth, 
 #             target, x0, x1, maxΔx, maxiter, 
 #             verbose = false
 #         )
-#         z_beta = UtilsJL.SimulationUtils.gd_value(gdmodel)
+#         z_beta = gd_value(gdmodel)
 #     end
 
 #     ## -----------------------------------------------------------
@@ -363,7 +363,7 @@ end
 #         PME = Dyn.get_join(M)
 #         function gd_biom_vg!(gdmodel)
 
-#             z_beta, ug_beta = UtilsJL.SimulationUtils.gd_value(gdmodel)
+#             z_beta, ug_beta = gd_value(gdmodel)
 #             PME = Dyn.get_join!(M, PME) do vatp_, ug_
 #                 exp(z_beta * z(vatp_, ug_) + ug_beta * vg(vatp_, ug_))
 #             end
@@ -394,7 +394,7 @@ end
 #             target, x0, x1, maxΔx, gdth, maxiter, 
 #             verbose = false
 #         )
-#         z_beta, ug_beta = UtilsJL.SimulationUtils.gd_value(gdmodel)
+#         z_beta, ug_beta = gd_value(gdmodel)
 #     end
 
 #     ## -----------------------------------------------------------
@@ -419,7 +419,7 @@ end
 #             function gd_a_upfun!(gdmodel)
 
 #                 gditer = gdmodel.iter
-#                 z_beta = UtilsJL.SimulationUtils.gd_value(gdmodel)
+#                 z_beta = gd_value(gdmodel)
 
 #                 PME = Dyn.get_join!(M, PME) do vatp_, ug_
 #                     exp(z_beta * z(vatp_, ug_) + ug_beta * vg(vatp_, ug_))
@@ -441,11 +441,11 @@ end
 #                 return z_avPME 
 #             end
 
-#             gdmodel = UtilsJL.SimulationUtils.grad_desc(gd_a_upfun!; gdth, 
+#             gdmodel = grad_desc(gd_a_upfun!; gdth, 
 #                 target, x0, x1, maxΔx, 
 #                 maxiter, verbose = false
 #             )
-#             z_beta = UtilsJL.SimulationUtils.gd_value(gdmodel)
+#             z_beta = gd_value(gdmodel)
             
 #             ## -----------------------------------------------------------
 #             # Check balance at ug_beta = 0.0
@@ -470,7 +470,7 @@ end
 #                 function ug_ug_upfun!(gdmodel)
 
 #                     gditer = gdmodel.iter
-#                     ug_beta = UtilsJL.SimulationUtils.gd_value(gdmodel)
+#                     ug_beta = gd_value(gdmodel)
 
 #                     PME = Dyn.get_join!(M, PME) do vatp_, ug_
 #                         exp(z_beta * z(vatp_, ug_) + ug_beta * vg(vatp_, ug_))
@@ -492,11 +492,11 @@ end
 #                     return ug_avPME 
 #                 end
 
-#                 gdmodel = UtilsJL.SimulationUtils.grad_desc(ug_ug_upfun!; gdth, 
+#                 gdmodel = grad_desc(ug_ug_upfun!; gdth, 
 #                     target, x0, x1, maxΔx, 
 #                     maxiter, verbose = false
 #                 )
-#                 ug_beta = UtilsJL.SimulationUtils.gd_value(gdmodel)
+#                 ug_beta = gd_value(gdmodel)
 #             end
 
 #             push!(z_betas, z_beta); push!(ug_betas, ug_beta)
@@ -545,7 +545,7 @@ end
 #             it = 1
 #             PME = Dyn.get_join(M)
 #             function gd_a_upfun!(gdmodel)
-#                 beta = UtilsJL.SimulationUtils.gd_value(gdmodel)
+#                 beta = gd_value(gdmodel)
 
 #                 PME = Dyn.get_join!(M, PME) do vatp_, ug_
 #                     exp(beta * z(vatp_, ug_))
@@ -567,11 +567,11 @@ end
 #                 return z_avPME
 #             end
 
-#             gdmodel = UtilsJL.SimulationUtils.grad_desc(gd_a_upfun!; gdth, 
+#             gdmodel = grad_desc(gd_a_upfun!; gdth, 
 #                 target, x0, x1, maxΔx, maxiter, 
 #                 verbose = false
 #             )
-#             z_beta = UtilsJL.SimulationUtils.gd_value(gdmodel)
+#             z_beta = gd_value(gdmodel)
 
 #             ## -----------------------------------------------------------
 #             # move vg

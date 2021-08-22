@@ -45,8 +45,13 @@ _reducebox!(net, reduce) = reduce ? reducebox!(net) : net
 
 function fix!(net::MetNet, rxns, val; reducebox = false)
     reducebox && reducebox!(net)
-    idxs = rxnindex(net, rxns); net.lb[idxs] .= net.ub[idxs] .= val; net
+    idxs = rxnindex(net, rxns)
+    idxs = (idxs isa Vector) ? idxs : [idxs]
+    net.lb[idxs] .= val
+    net.ub[idxs] .= val
+    net
 end
+
 function fixxing(f::Function, net::MetNet, rxns, val; tol = 0.0)
     
     idxs = rxnindex(net, rxns)

@@ -1,8 +1,8 @@
 module Dynamic
     
-    import UtilsJL
-    const Ass = UtilsJL.ProjAssistant
-    Ass.@gen_sub_proj
+    using ProjAssistant
+    @gen_sub_proj
+
     using Plots
     import MathProgBase.HighLevelInterface: linprog
     import Clp: ClpSolver
@@ -11,6 +11,8 @@ module Dynamic
     using ExtractMacro
     using Statistics
     using Random
+    import SimTools
+    import SimTools: grad_desc, gd_value
 
     include("BoxGrid.jl")
     include("LP.jl")
@@ -18,7 +20,6 @@ module Dynamic
     include("ToyModelD2.jl")
     include("ToyModelD3.jl")
     include("PlotUtils.jl")
-    include("ChunkedPol.jl")
     include("Space.jl")
     include("Container.jl")
     include("utils.jl")
@@ -27,9 +28,6 @@ module Dynamic
     include("subspace.jl")
     include("SimTools.jl")
     include("STST.jl")
-
-    function __init__()
-        Ass.@create_proj_dirs
-    end
+    include("maxent.jl")
 
 end

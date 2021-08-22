@@ -1,10 +1,14 @@
+using ProjAssistant
+@quickactivate
+
+# ------------------------------------------------------
 @time begin 
     import Chemostat_InSilico
     const Dyn = Chemostat_InSilico.Dynamic
     import Chemostat_InSilico.Dynamic: 
         SimD2, run_simD2!, hist, 
         n_ave_conv!, tail_ave,
-        plotsdir, lglob, sglob, Container, vec!, Vi, 
+        Container, vec!, Vi, 
         normalizeP!, simdat_file, batch_file,
         set_status, get_status,
         save_batch, save_bfiles, save_simdat,
@@ -12,31 +16,24 @@
         EXPLODED_SIM_STATUS, NITERS_SIM_STATUS, 
         STST_SIM_STATUS, reset!, 
         STST, is_steady
-        
-    import UtilsJL
-    const PltU = UtilsJL.PlotsUtils
-    const Ass = UtilsJL.ProjAssistant
-    const GU = UtilsJL.GeneralUtils
+
+    import SimTools
+    import SimTools: grad_desc, gd_value
 
     using Plots
     using Base.Threads
     using ProgressMeter
     using BenchmarkTools
-    using ExtractMacro
 
-    Ass.set_verbose(false)
 end
 
 ## ------------------------------------------------------
-let
-    Ds = range(0.1, 0.5; length = 8)
-    ϵs = range(0.01, 1.0; length = 8)
-    cgs = [15.0, Inf]
-
-    simid = "SimD2"
-    Dyn.sglob(;Ds, ϵs, cgs, SimD2Id = simid)
+function run_sim2D(simid, Ds, ϵs, cg; 
+        dosave_batches = true, 
+        dosave_simdat = true
+    )
     
-    iter = Iterators.product(Ds, ϵs, cgs)
+    iter = Iterators.product(Ds, ϵs, cg)
     tot_sims = length(iter)
     Ch = Channel() do Ch_
         for (simi, (D, ϵ, cg)) in enumerate(iter)
@@ -45,7 +42,7 @@ let
     end
 
     # Space
-    V = lglob(:Vcell2D)
+    V = lglob(Dyn, :Vcell2D)
     Vz = Vi(V, :z)
     Vug = Vi(V, :ug)
 
@@ -74,13 +71,18 @@ let
             
             # batchs
             batch_files = String[]
+
+            # Welcome
+            @info("At", simid, simparams, thid)
             
             # status
             status = get_status(simid, simparams) 
-            # status = UNDONE_SIM_STATUS # Test
             (status != UNDONE_SIM_STATUS) && continue 
 
             # exploded th
+            z_tail_acc = 0.0
+            z_tail_count = 0
+            z_tail_len = 20
             exploded_Xth = 1e2
             dead_Xth = 5e-2
             z_D_diff_th = 0.05
@@ -88,7 +90,7 @@ let
             # time series
             push_frec = 10
             save_frec = 100 * push_frec
-
+            
             Xts = Float64[]
             sgts = Float64[]
             z_avts = Float64[]
@@ -126,18 +128,21 @@ let
                 dostst = dostst1 || dostst2
                 isstst = dostst && is_steady(stst, stst_th)
 
-                # z_tave
-                dotave = !isempty(z_avts) && (isniter || isstst)
-                z_tave = dotave ? tail_ave(vec(z_avts), 25) : S.z_av
+                # z_tail
+                iszero(rem(S.it, z_tail_len)) && 
+                    (z_tail_count = 0, z_tail_acc = 0.0)
+                z_tail_acc += S.z_av
+                z_tail_count += 1
+                z_tail = z_tail_acc / z_tail_count
                 
                 # dead
                 isdead1 = (S.X < dead_Xth)
-                isdead2 = (isstst || isniter) && ((S.D - z_tave) / S.D) > z_D_diff_th
+                isdead2 = (isstst || isniter) && ((S.D - z_tail) / S.D) > z_D_diff_th
                 isdead = isdead1 || isdead2
 
                 # explosion
                 isexplosion1 = (S.X > exploded_Xth)
-                isexplosion2 = (isstst || isniter) && ((z_tave - S.D) / S.D) > z_D_diff_th
+                isexplosion2 = (isstst || isniter) && ((z_tail - S.D) / S.D) > z_D_diff_th
                 isexplosion = isexplosion1 || isexplosion2
                 
                 # ended
@@ -201,7 +206,9 @@ let
                 docollect = isbreak
                 docollect |= (it == 1)
                 docollect |= iszero(rem(it, push_frec)) 
+                docollect &= dosave_batches
                 if docollect
+
                     push!(Xts, X)
                     push!(z_avts, z_av)
                     push!(ug_avts, ug_av)
@@ -244,7 +251,7 @@ let
             function gd_up_fun(gdmodel) 
                 @extract S: ug_av cgD_X
 
-                tfactor = UtilsJL.SimulationUtils.gd_value(gdmodel)
+                tfactor = gd_value(gdmodel)
                 tfactor = max(min_tfactor, tfactor)
                 tauxP .= S.P .* (tfactor .- tkernel)
                 normalizeP!(tauxP)
@@ -270,7 +277,7 @@ let
                 maxiter = 100
                 verbose = false
 
-                gdmodel_ = UtilsJL.SimulationUtils.grad_desc(gd_up_fun; 
+                gdmodel_ = grad_desc(gd_up_fun; 
                     break_cond = gd_break_cond,
                     target, x0, x1, maxΔx, gdth, maxiter, verbose
                 )
@@ -301,8 +308,8 @@ let
 
             # ------------------------------------------------------
             # save sim
-            save_simdat(S, simid, simparams)
-            save_bfiles(batch_files, simid, simparams)
+            dosave_simdat && save_simdat(S, simid, simparams)
+            dosave_batches && save_bfiles(batch_files, simid, simparams)
 
             # ------------------------------------------------------
             # info
@@ -310,4 +317,31 @@ let
         
         end # for (D, ϵ, sg)
     end # for thid
+end
+
+## ------------------------------------------------------
+# finite cg
+let
+    Ds = range(0.1, 0.5; length = 16)
+    ϵs = range(0.01, 1.0; length = 16)
+    cg = 15.0
+    simid = "SimD2"
+
+    sglob(Dyn, (;Ds, ϵs, cg, simid), :dyn, :params, :finite_cg)
+    run_sim2D(simid, Ds, ϵs, cg)
+end
+
+## ------------------------------------------------------
+# infinite cg
+let
+    Ds = range(0.1, 0.5; length = 50)
+    ϵs = range(0.01, 1.0; length = 50)
+    cg = Inf
+    simid = "SimD2"
+
+    sglob(Dyn, (;Ds, ϵs, cg, simid), :dyn, :params, :infinite_cg) 
+    run_sim2D(simid, Ds, ϵs, cg; 
+        dosave_batches = false, 
+        dosave_simdat = false
+    )
 end

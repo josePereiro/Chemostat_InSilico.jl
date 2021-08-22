@@ -2,9 +2,9 @@
     import Chemostat_InSilico
     const Dyn = Chemostat_InSilico.Dynamic
     import Chemostat_InSilico.Dynamic: 
-        SimD2, run_simD2!, check_stst, hist, 
+        SimD3, run_simD3!, check_stst, hist, 
         n_ave_conv!, tail_ave,
-        plotsdir, lglob, sglob, Container, vec!, Vi, 
+        Container, vec!, Vi, 
         normalizeP!, 
         save_simdat, load_simdat, simdat_file,
         set_status, get_status,
@@ -30,13 +30,12 @@
     import DataFileNames
     const DFN = DataFileNames
 
-    Ass.set_verbose(false)
 end
 
 ## ------------------------------------------------------
 # globlas
 # batch = (; push_frec, Xts, sgts, z_avts, ug_avts, cgD_Xts, Pzts, Pugts)
-Ds, ϵs, cgs, simid = Dyn.lglob(:Ds, :ϵs, :cgs, :SimD2Id)
+Ds, ϵs, cgs, simid = Dyn.lglob(:Ds, :ϵs, :cgs, :SimD3Id)
 
 ## ------------------------------------------------------
 let
@@ -71,6 +70,7 @@ let
         V = S.V
         Vz = Vi(V, :z)
         Vug = Vi(V, :ug)
+        Vuo = Vi(V, :uo)
 
         # Plots
         ps = Plots.Plot[]
@@ -90,9 +90,20 @@ let
             ug_av = sum(P .* Vug)
             vline!(p, [ug_av]; label = "", color = :red)
             push!(ps, p)
+
+            Puo = hist(Vuo, P)
+            p = bar(Puo; label = "", title,
+                xlabel = "uo", ylabel = "proj"
+            )
+            uo_av = sum(P .* Vuo)
+            vline!(p, [uo_av]; label = "", color = :red)
+            push!(ps, p)
         end
+
+        layout = (2, 3)
         PltU.sfig(ps, 
-            plotsdir(simid, "dyn_maxent_marginals", simparams, (;MEmode), ".png")
+            plotsdir(simid, "dyn_maxent_marginals", simparams, (;MEmode), ".png");
+            layout
         )
     end
 

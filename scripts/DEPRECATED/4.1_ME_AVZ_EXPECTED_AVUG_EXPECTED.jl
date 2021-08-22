@@ -8,11 +8,6 @@ let
     # @threads 
     for (simi, (D, ϵ, cg)) in collect(enumerate(simparams))
 
-        # Test
-        D=2.71e-01 
-        cg=1.50e+01 
-        ϵ=1.51e-01
-
         thid = threadid()
 
         simparams = (;D, ϵ, cg)
@@ -57,7 +52,7 @@ let
         # gd fun
         function gd_up_fun!(gdmodel) 
 
-            z_beta, ug_beta = UtilsJL.SimulationUtils.gd_value(gdmodel)
+            z_beta, ug_beta = gd_value(gdmodel)
             PME .= exp.(z_beta .* (Vz .- z0)) .* exp.(ug_beta .* (Vug .- ug0))
             normalizeP!(PME)
 
@@ -89,12 +84,12 @@ let
             return ret
         end
 
-        gdmodel = UtilsJL.SimulationUtils.grad_desc_vec(gd_up_fun!;
+        gdmodel = grad_desc_vec(gd_up_fun!;
             smooth = 0.05,
             target, x0, x1, maxΔx, minΔx, gdth, maxsimparams, 
             verbose = true
         )
-        z_beta, ug_beta = UtilsJL.SimulationUtils.gd_value(gdmodel)
+        z_beta, ug_beta = gd_value(gdmodel)
 
         # save
         dat = (;PME, z_beta, ug_beta, z_avPME, ug_avPME)

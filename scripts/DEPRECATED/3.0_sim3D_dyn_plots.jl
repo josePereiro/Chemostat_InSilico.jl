@@ -5,7 +5,7 @@ using Plots: length
    import Chemostat_InSilico.Dynamic: 
       SimD3, run_simD3!, check_stst, hist, 
       n_ave_conv!, tail_ave,
-      plotsdir, lglob, sglob, Container, vec!, Vi, 
+      Container, vec!, Vi, 
       normalizeP!, 
       save_simdat, load_simdat, simdat_file,
       set_status, get_status,
