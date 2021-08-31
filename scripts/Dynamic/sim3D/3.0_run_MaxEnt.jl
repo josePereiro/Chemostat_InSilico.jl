@@ -20,7 +20,6 @@ using ProjAssistant
 
     using Base.Threads
     using ProgressMeter
-    using BenchmarkTools
     using ExtractMacro
 
 end
