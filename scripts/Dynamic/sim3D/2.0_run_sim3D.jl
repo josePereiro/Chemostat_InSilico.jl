@@ -322,7 +322,7 @@ function run_sim3D(simid, Ds, ϵs, cg;
             # ------------------------------------------------------
             # info
             print_info("At end")
-            (status == STST_SIM_STATUS) && exit()
+            (status == STST_SIM_STATUS) && exit() # Test
         
         end # for (D, ϵ, sg)
     end # for thid
