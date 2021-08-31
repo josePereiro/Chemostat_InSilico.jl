@@ -41,38 +41,6 @@ simparams = let
     end
 end
 
-# ## ----------------------------------------------------------------------------
-# let
-#     D, ϵ, cg = 3.966666666666667, 0.01, 15.0
-    
-#     # Sim globals
-#     status = Dyn.get_status(simid, (;D, ϵ, cg))
-#     @show status
-#     S = Dyn.load_simdat(simid, (;D, ϵ, cg))
-#     X = S.X 
-#     cgD_X = S.cg * S.D / S.X
-#     V = S.V
-#     @show S.ug_av
-#     @show X
-#     @show cgD_X
- 
-#     # maxent
-#     me_out = maxent(V, D, cgD_X; 
-#         # Top loop
-#         top_maxiter = 10,
- 
-#         # GD globals
-#         gd_maxiter = 1000,
-#         gdth = 1e-2,
-#         verbose = true,
-
-#         # stst
-#         stst_th = 1e-2,
-#         stst_w = 10
-#     )
-    
-# end
-
 ## ----------------------------------------------------------------------------
 # ME_AVZ_EXPECTED_AVUG_BOUNDED
 let

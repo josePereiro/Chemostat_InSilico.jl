@@ -331,13 +331,8 @@ end
 ## ------------------------------------------------------
 # finite cg
 let
-    # Ds = range(0.1, 0.5; length = 4)
-    # ϵs = range(0.01, 1.0; length = 8)
-    
-    # Test
-    # Ds = range(0.1, 11.7; length = 4)
-    Ds = [3.966666666666667, 7.833333333333333, 11.7]
-    ϵs = range(0.01, 1.0; length = 4)
+    Ds = range(0.1, 0.5; length = 16)
+    ϵs = range(0.01, 1.0; length = 16)
     cg = 15.0
     simid = "SimD3"
 
