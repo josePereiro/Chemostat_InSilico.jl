@@ -4,6 +4,8 @@ using ProjAssistant
 @time begin 
     import Chemostat_InSilico
     const Dyn = Chemostat_InSilico.Dynamic
+
+    using Base.Threads
 end
 
 
