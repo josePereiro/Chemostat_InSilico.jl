@@ -9,7 +9,7 @@ using ProjAssistant
         run_simD3!, SimD3, hist, 
         n_ave_conv!, tail_ave,
         Container, vec!, Vi, 
-        normalizeP!, simdat_file, batch_file,
+        normalizeP!, batch_file,
         set_status, get_status,
         save_batch, save_bfiles, save_simdat,
         UNDONE_SIM_STATUS, DEAD_SIM_STATUS,
@@ -20,9 +20,7 @@ using ProjAssistant
     import SimTools
     import SimTools: grad_desc, gd_value
 
-    using Plots
     using Base.Threads
-    using ProgressMeter
 
 end
 
@@ -73,7 +71,6 @@ function run_sim3D(simid, Ds, ϵs, cg;
             # batchs
             batch_files = String[]
 
-            
             # Welcome & status
             status = get_status(simid, simparams) 
             @info("At", simid, simparams, thid, status)
@@ -89,7 +86,7 @@ function run_sim3D(simid, Ds, ϵs, cg;
             z_D_diff_th = 0.05
 
             # time series
-            push_frec = 50
+            push_frec = 10
             save_frec = 100 * push_frec
             
             Xts = Float64[]
@@ -236,8 +233,9 @@ function run_sim3D(simid, Ds, ϵs, cg;
                             cgD_Xts, Pzts, Pugts, Puots
                         )
 
-                        bfile = save_batch(batchdat, simid, simparams, S.it)
-                        push!(batch_files, bfile)
+                        bfile_params = (simid, simparams, S.it)
+                        bfile = save_batch(batchdat, bfile_params...)
+                        push!(batch_files, bfile_params)
 
                         empty!.(tseries)
                     end
@@ -322,7 +320,6 @@ function run_sim3D(simid, Ds, ϵs, cg;
             # ------------------------------------------------------
             # info
             print_info("At end")
-            (status == STST_SIM_STATUS) && exit() # Test
         
         end # for (D, ϵ, sg)
     end # for thid
@@ -336,7 +333,8 @@ let
     cg = 15.0
     simid = "SimD3"
 
-    sglob(Dyn, (;Ds, ϵs, cg, simid), :dyn, :params, :finite_cg)
+    params = (;Ds, ϵs, cg)
+    sglob(Dyn, params, :SimD3, :params, :finite_cg)
     run_sim3D(simid, Ds, ϵs, cg; 
         docollect_Ps = false
     )
@@ -349,8 +347,8 @@ end
 #     ϵs = range(0.01, 1.0; length = 50)
 #     cg = Inf
 #     simid = "SimD3"
-
-#     sglob(Dyn, (;Ds, ϵs, cg, simid), :dyn, :params, :infinite_cg) 
+    # params = (;Ds, ϵs, cg)
+    # sglob(Dyn, params, :SimD3, :params, :infinite_cg)
 #     run_sim3D(simid, Ds, ϵs, cg; 
 #         dosave_batches = false, 
 #         dosave_simdat = false

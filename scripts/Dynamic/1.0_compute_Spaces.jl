@@ -13,7 +13,7 @@ end
 # common globals
 let
     sglob(Dyn;
-        δ = 1000
+        δ = 250
     )
 end
 

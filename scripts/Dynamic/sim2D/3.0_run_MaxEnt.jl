@@ -34,7 +34,7 @@ end
 # globlas
 # batch = (; push_frec, Xts, sgts, z_avts, ug_avts, cgD_Xts, Pzts, Pugts)
 params = lglob(Dyn, :dyn, :params, :finite_cg)
-@extract params: Ds ϵs cg simid
+@extract params: simid Ds ϵs cg
 
 simparams = let
     iter = collect(Iterators.product(Ds, ϵs, cg))
