@@ -11,8 +11,7 @@ end
 # common globals
 let
     sglob(Dyn;
-        # δ = 1000
-        δ = 200
+        δ = 1000
     )
 end
 
@@ -25,7 +24,7 @@ end
     freeids = [:z, :ug]
     @lglob Dyn δ
     
-    @info("Building Vcell2D")
+    @info("Building Vcell2D", nthreads())
     @show freeids δ
     filter(net, v) = all(v .!= 0.0) # avoid artifacts at 0.0
     Vcell2D = Dyn.Space(net2D, freeids, δ; filter)
@@ -40,34 +39,9 @@ end
     freeids = [:z, :ug, :uo]
     @lglob Dyn δ
     
-    @info("Building Vcell3D")
+    @info("Building Vcell3D", nthreads())
     @show freeids δ
     filter(net, v) = all(v .!= 0.0) # avoid artifacts at 0.0
     Vcell3D = Dyn.Space(net3D, freeids, δ; filter)
     @sglob Dyn Vcell3D net3D
 end
-
-# ## ------------------------------------------------------
-# # dev
-# using Plots
-# let
-#     net = Dyn.ToyModel3D()
- 
-#     # Dyn.fix!(net, :z, 8.0)
-#     # Dyn.fix!(net, :ug, 15.0)
-#     # Dyn.fix!(net, :uo, 4.0)
-#     # Dyn.reducebox!(net)
-#     L, U = Dyn.fva(net)
-    
-#     @show net
-#     @show L
-#     @show U
-    
-#     p = plot()
-#     scatter!(p, net.rxns, L; label = "", c = :blue)
-#     plot!(p, net.rxns, L; label = "L", c = :blue, ls = :dash)
-#     scatter!(p, net.rxns, U; label = "", c = :red)
-#     plot!(p, net.rxns, U; label = "U", c = :red, ls = :dash)
- 
-#     sfig(Dyn, p, "test.png")
-#  end
