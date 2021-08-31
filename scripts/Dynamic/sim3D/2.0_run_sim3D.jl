@@ -23,7 +23,6 @@ using ProjAssistant
     using Plots
     using Base.Threads
     using ProgressMeter
-    using BenchmarkTools
 
 end
 
