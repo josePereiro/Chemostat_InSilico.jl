@@ -87,6 +87,7 @@ let
         )
 
         sdat(Dyn, me_out, datfile)
+        exit()
         
     end # for (simi, (D, ϵ, cg)) 
 end

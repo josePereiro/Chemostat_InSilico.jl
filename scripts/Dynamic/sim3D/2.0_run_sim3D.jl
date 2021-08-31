@@ -323,6 +323,7 @@ function run_sim3D(simid, Ds, ϵs, cg;
             # ------------------------------------------------------
             # info
             print_info("At end")
+            exit()
         
         end # for (D, ϵ, sg)
     end # for thid
