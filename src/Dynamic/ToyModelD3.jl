@@ -35,13 +35,12 @@ function ToyModel3D()
     # ferm: acetyl-CoA + Pi → acetyl-P + CoA
     # ferm: acetyl-P + ADP → acetate + ATP
     # ferm: AcCoa -> Ac + Atp
-    # I will not include the ATP poduction
 
-    # z    ass
+    # z biomass
     # Data From:
     # Varma, (1993): 2465–73. https://doi.org/10.1128/AEM.59.8.2465-2473.1993.
     # FIG 2
-    # GBY = 0.068 # mmol/gDW
+    # GBY = 0.068 # mmol GLC/gDW
     GBY = 1 / 0.068 # gDW/ mmol
 
     # uptakes limits
@@ -53,24 +52,24 @@ function ToyModel3D()
     Vg = 20      # (glucose uptake limit) mmol/gDW h
     Vz = 0.5     # D < 0.5 below the acetate switch [23] Nature, 528(7580):99–104, 2015.
 
-    net[:S] = 
-    # rxns:  glyc  resp  ferm  vatp  atpm    ua   z     ug   uo    # mets
-    [       -1.0   0.0   0.0   0.0   0.0    0.0  -GBY  1.0  0.0 ;  #  Glc
-             GEY   REY   0.0   0.0  -NGAM   0.0  -GAM  0.0  0.0 ;  #  Atp
-             GEY  -1.0  -1.0   0.0   0.0    0.0   0.0  0.0  0.0 ;  #  AcCoa
-             0.0   0.0   1.0   0.0   0.0    1.0   0.0  0.0  0.0 ;  #  Ac
-             0.0  -RNO   0.0   0.0   0.0    0.0   0.0  0.0  1.0 ;  #  Oxy
-             GEY   REY   0.0  -1.0   0.0    0.0   0.0  0.0  0.0 ;  #  AUXvatp
+    net[:S] = [      
+    #             glyc   ppp    resp   tac    ferm   z     atpm   ua     ug     uo    
+    #= Glc   =#  -1.0   -1.0    0.0    0.0    0.0   -GBY   0.0    0.0   +1.0    0.0 ;  #= Glc   =#
+    #= Atp   =#  +1.0    0.0   +1.0   +1.0    0.0   -GAM  -1.0    0.0    0.0    0.0 ;  #= Atp   =#
+    #= Ac    =#   0.0    0.0    0.0    0.0   +1.0    0.0   0.0   +1.0    0.0    0.0 ;  #= Ac    =#
+    #= NADH  =#  +1.0   +1.0   -1.0   +4.0    0.0   -1.0   0.0    0.0    0.0    0.0 ;  #= NADH  =#
+    #= AcCoa =#  +1.0   +1.0    0.0   -1.0   -1.0    0.0   0.0    0.0    0.0    0.0 ;  #= AcCoa =#
+    #= Oxy   =#   0.0    0.0   -1.0    0.0    0.0    0.0   0.0    0.0    0.0   +1.0 ;  #= Oxy   =#
     ]
     
-    net[:mets] = ["Glc", "Atp", "AcCoa", "Ac", "Oxy", "AUXvatp"]
-    net[:b] =    [0.0  , 0.0  , 0.0    , 0.0 , 0.0  , 0.0      ] # const exchanges
+    net[:mets] = ["Glc", "Atp", "Ac", "NADH", "AcCoa", "Oxy"]
+    net[:b] =    [0.0  , 0.0  , 0.0 , 0.0   , 0.0    , 0.0  ] # const exchanges
     
     
-    net[:rxns] = [ "glyc" , "resp" , "ferm" , "vatp", "atpm", "ua" ,  "z"  , "ug" ,  "uo" ]
-    net[:lb]   = [ 0.0    , 0.0    , 0.0    , 0.0   , 1.0   , -AB  ,  0.0  , 0.0  ,  0.0 ]
-    net[:ub]   = [ AB     , AB     , AB     , AB    , 1.0   , 0.0  ,  Vz   , Vg   ,  AB   ]
-    net[:c]    = [ 0.0    , 0.0    , 0.0    , 0.0   , 0.0   , 0.0  ,  -1.0 , 0.0  ,  0.0  ]
+    net[:rxns] = ["glyc"  , "ppp"  , "resp" , "tac" , "ferm" , "z"   , "atpm", "ua"  ,  "ug" , "uo" ]
+    net[:lb]   = [ 0.0    , 0.0    , 0.0    , 0.0   , 0.0    ,  0.0  , NGAM  , -AB   ,  0.0  , 0.0  ]
+    net[:ub]   = [ AB     , AB     , AB     , AB    , AB     ,  Vz   , NGAM  ,  0.0  ,  Vg   ,  AB  ]
+    net[:c]    = [ 0.0    , 0.0    , 0.0    , 0.0   , 0.0    ,  -1.0 , 0.0   ,  0.0  ,  0.0  , 0.0  ]
     
     return reducebox!(MetNet(;net...))
 end

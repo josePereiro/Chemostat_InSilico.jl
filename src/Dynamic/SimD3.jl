@@ -101,19 +101,20 @@ function run_simD3!(S::SimD3;
         S.X += S.dXdt
         
         # P transformation
-        S.ug_av = sum(Vug .* P)
-        S.cgD_X = S.cg * S.D / S.X
-        if (S.ug_av > S.cgD_X)
+        _ug_av = sum(Vug .* P)
+        _cgD_X = S.cg * S.D / S.X
+        if (_ug_av > _cgD_X)
             tranformation()
             normalizeP!(P)
         end
 
-        # update exchanges
+        # update S
+        S.cgD_X = _cgD_X
+
         S.z_av = sum(Vz .* P)
         S.ug_av = sum(Vug .* P)
         S.uo_av = sum(Vuo .* P)
 
-        # update limiting conc
         S.sg += (- S.ug_av * S.X + (S.cg - S.sg) * S.D) * S.Δt
         S.sg = max(S.sg, 0.0)
 
@@ -121,7 +122,7 @@ function run_simD3!(S::SimD3;
         feedback()
 
         # stst
-        (dobreak() == true) && break
+        (dobreak() === true) && break
 
     end # for it
 

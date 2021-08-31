@@ -19,17 +19,15 @@ function maxent(V, D, cgD_X;
     # ---------------------------------------------------------------
     # Space globals
     Vz = Vi(V, :z)
-    z0 = sum(Vz) / length(Vz)
-    Vz0 = Vz .- z0
     Vug = Vi(V, :ug)
-    ug0 = sum(Vug) / length(Vug)
-    Vug0 = Vug .- ug0
-
+    Vvol = length(V)
+    V = nothing # save mem?
+    
     # ---------------------------------------------------------------
     # Alg globals
-    PME = ones(length(V))
+    PME = ones(Vvol)
     normalizeP!(PME)
-    Paux = similar(PME)
+    # Paux = similar(PME)
     I = eachindex(PME)
     z_avPME = 0.0
     ug_avPME = 0.0
@@ -39,6 +37,18 @@ function maxent(V, D, cgD_X;
     ug_valid_at_b0 = false
     z_betas = Float64[]
     ug_betas = Float64[]
+
+    ## -----------------------------------------------------------
+    # _maxent_fun!
+    Uz = maximum(Vz)
+    Uug = maximum(Vug)
+    function _maxent_fun!(P, z_beta_, ug_beta_; min_P = 1e-300)
+        norm = max(z_beta_ * Uz, ug_beta_ * Uug)
+        @inbounds for i in I
+            P[i] = max(min_P, exp((z_beta_ * Vz[i] + ug_beta_ * Vug[i]) - norm))
+        end
+        P
+    end
 
     ## -----------------------------------------------------------
     # top loop globals
@@ -101,10 +111,7 @@ function maxent(V, D, cgD_X;
 
             z_beta = SimTools.gd_value(gdmodel)
 
-            # aux
-            (gd_iter == 1) && (Paux .= exp.(ug_beta .* Vug0))
-
-            PME .= exp.(z_beta .* Vz0) .* Paux
+            _maxent_fun!(PME, z_beta, ug_beta)
             normalizeP!(PME)
 
             z_avPME = 0.0
@@ -131,10 +138,11 @@ function maxent(V, D, cgD_X;
         # Check balance at ug_beta = 0.0 the first time
         if check_b0 && (topiter == 1)
             ug_beta0 = 0.0
-            PME .= exp.(z_beta .* Vz0) .* exp.(ug_beta0 .* Vug0)
+            _maxent_fun!(PME, z_beta, ug_beta0)
             normalizeP!(PME)
             ug_avPME_at_b0 = sum(PME .* Vug)
             ug_valid_at_b0 = (abs(ug_avPME_at_b0) <= abs(cgD_X))
+            @show ug_valid_at_b0
         end
 
         ## -----------------------------------------------------------
@@ -150,13 +158,11 @@ function maxent(V, D, cgD_X;
             x1 = x0 + maxΔx * 0.1
             gd_iter = 1
             
-            function ug_ug_upfun!(gdmodel)
+            function gd_ug_upfun!(gdmodel)
 
                 ug_beta = SimTools.gd_value(gdmodel)
 
-                (gd_iter == 1) && (Paux .= exp.(z_beta .* Vz0))
-
-                PME .= Paux .* exp.(ug_beta .* Vug0)
+                _maxent_fun!(PME, z_beta, ug_beta)
                 normalizeP!(PME)
 
                 ug_avPME = 0.0
@@ -170,7 +176,7 @@ function maxent(V, D, cgD_X;
                 return ug_avPME 
             end
 
-            gdmodel = SimTools.grad_desc(ug_ug_upfun!; gdth, 
+            gdmodel = SimTools.grad_desc(gd_ug_upfun!; gdth, 
                 target, x0, x1, maxΔx, 
                 maxiter = gd_maxiter, verbose = false
             )
@@ -193,7 +199,7 @@ function maxent(V, D, cgD_X;
     end # while true
 
     status = conv ? :conv : :maxiter
-    return (;PME, z_beta, ug_beta, z_avPME, ug_avPME, status)
+    return (;PME, z_beta, ug_beta, status)
     
 end
 
