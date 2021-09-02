@@ -70,11 +70,12 @@ end
 ## ------------------------------------------------------
 function collect_ts(tsid, simid, qparams)
    dat_pool = Dict()
-   bfiles = load_bfiles(simid, qparams)
+   bfile_params = load_bfiles(simid, qparams)
    t0 = 1
-   for bname in bfiles
+   for (simid, simparams, it) in bfile_params
       # batch
-      batch = ldat(bname)
+      fname = batch_file(simid, simparams, it)
+      batch = ldat(fname)
       bs = getfield(batch, tsid)
       @assert (bs isa Vector)
       blen = length(bs)

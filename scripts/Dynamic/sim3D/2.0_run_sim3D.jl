@@ -69,7 +69,7 @@ function run_sim3D(simid, Ds, ϵs, cg;
             simparams = (;S.D, S.ϵ, S.cg)
             
             # batchs
-            batch_files = String[]
+            batch_files = []
 
             # Welcome & status
             status = get_status(simid, simparams) 
