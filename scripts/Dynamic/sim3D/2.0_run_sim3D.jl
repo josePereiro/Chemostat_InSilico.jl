@@ -61,7 +61,7 @@ function run_sim3D(simid, Ds, ϵs, cg;
                 X = 0.5, 
                 sg = cg,
                 Δt = 0.05,
-                niters = 10000
+                niters = 20000
             )
 
             P = S.P
@@ -328,8 +328,11 @@ end
 ## ------------------------------------------------------
 # finite cg
 let
-    Ds = range(0.1, 0.5; length = 16)
-    ϵs = range(0.01, 1.0; length = 16)
+    Ds = range(0.1, 0.5; length = 12)
+    ϵs = [
+        10.0.^range(-3, -0.35; length=10);
+        range(10.0^-0.30, 1.0; length=6);
+    ]
     cg = 15.0
     simid = "SimD3"
 
