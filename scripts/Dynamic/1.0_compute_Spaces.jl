@@ -16,7 +16,7 @@ end
 # common globals
 let
     sglob(Dyn;
-        δ = 400
+        δ = 450 # the number of 
     )
 end
 
@@ -30,7 +30,8 @@ end
     
     @info("Building Vcell2D", nthreads())
     @show freeids δ
-    filter(net, v) = all(v .!= 0.0) # avoid artifacts at 0.0
+    fLb, fUb = Dyn.bounds(net2D, freeids)
+    filter(net, v) = all(fLb .< v .< fUb) # avoid artifacts at extremes
     Vcell2D = Dyn.Space(net2D, freeids, δ; filter)
     @sglob Dyn Vcell2D net2D
 
@@ -48,7 +49,8 @@ end
     
     @info("Building Vcell3D", nthreads())
     @show freeids δ
-    filter(net, v) = all(v .!= 0.0) # avoid artifacts at 0.0
+    fLb, fUb = Dyn.bounds(net3D, freeids)
+    filter(net, v) = all(fLb .< v .< fUb) # avoid artifacts at extremes
     Vcell3D = Dyn.Space(net3D, freeids, δ; filter)
     @sglob Dyn Vcell3D net3D
 
@@ -76,5 +78,5 @@ let
     Dyn.fix!(net3D, :uo, lb + (ub - lb) / 2)
     Dyn.reducebox!(net3D)
     @assert all(net3D.ub .- net3D.lb .≈ 0.0)
-    net3D
+    println(net3D)
 end

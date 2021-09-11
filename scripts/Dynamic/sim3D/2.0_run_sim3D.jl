@@ -330,8 +330,8 @@ end
 let
     Ds = range(0.1, 0.5; length = 12)
     ϵs = [
-        10.0.^range(-3, -0.35; length=10);
-        range(10.0^-0.30, 1.0; length=6);
+        10.0.^range(log10(1e-3), log10(0.1); length=6);
+        range(0.2, 1.0; length=6);
     ]
     cg = 15.0
     simid = "SimD3"
