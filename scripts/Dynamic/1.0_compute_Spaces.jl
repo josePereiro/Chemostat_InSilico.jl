@@ -16,7 +16,7 @@ end
 # common globals
 let
     sglob(Dyn;
-        δ = 450 # the number of 
+        δ = 450 # the number of discrete bins
     )
 end
 
