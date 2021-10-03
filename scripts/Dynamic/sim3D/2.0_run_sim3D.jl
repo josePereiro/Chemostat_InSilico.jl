@@ -343,17 +343,18 @@ let
     )
 end
 
-# ## ------------------------------------------------------
-# # infinite cg
-# let
-#     Ds = range(0.1, 0.5; length = 50)
-#     ϵs = range(0.01, 1.0; length = 50)
-#     cg = Inf
-#     simid = "SimD3"
-    # params = (;Ds, ϵs, cg)
-    # sglob(Dyn, params, :SimD3, :params, :infinite_cg)
-#     run_sim3D(simid, Ds, ϵs, cg; 
-#         dosave_batches = false, 
-#         dosave_simdat = false
-#     )
-# end
+## ------------------------------------------------------
+# infinite cg
+let
+    Ds = range(0.1, 0.5; length = 50)
+    ϵs = range(0.01, 1.0; length = 50)
+    cg = Inf
+    simid = "SimD3"
+    params = (;Ds, ϵs, cg)
+    sglob(Dyn, params, :SimD3, :params, :infinite_cg)
+    run_sim3D(simid, Ds, ϵs, cg; 
+        dosave_batches = false, 
+        dosave_simdat = false, 
+        docollect_Ps = false
+    )
+end
