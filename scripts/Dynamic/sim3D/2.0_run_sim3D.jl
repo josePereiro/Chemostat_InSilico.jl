@@ -178,7 +178,7 @@ function run_sim3D(simid, Ds, ϵs, cg;
                 D, z_av, zdiff = _round.([D, z_av, zdiff])
                 ug_av, uo_av, cgD_X, ugdiff = _round.([ug_av, uo_av, cgD_X, ugdiff])
                 @info(msg,
-                    (simi, tot_sims),
+                    progress = string(simi, " of ", tot_sims, " (", div(simi * 100, tot_sims), "%)"),
                     it, thid,
                     status,
                     cg, ϵ,

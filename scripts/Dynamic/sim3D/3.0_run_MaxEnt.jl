@@ -19,8 +19,6 @@ end
 ## ----------------------------------------------------------------------------
 # ME_AVZ_EXPECTED_AVUG_BOUNDED
 let
-
-    WLOCK = ReentrantLock()
     MEmode = "ME_AVZ_EXPECTED_AVUG_BOUNDED"
 
     # batch = (; push_frec, Xts, sgts, z_avts, ug_avts, cgD_Xts, Pzts, Pugts)
@@ -58,7 +56,7 @@ let
             cgD_X = S.cg * S.D / S.X
             V = S.V
             S = nothing; GC.gc()
-            
+
             # ---------------------------------------------------------------
             # maxent
             me_out = maxent(V, D, cgD_X; 
@@ -72,7 +70,12 @@ let
 
                 # stst
                 stst_th = 1e-2,
-                stst_w = 10
+                stst_w = 10, 
+
+                # info
+                further_info = (;
+                    progress = string(simi, " of ", tot_sims, " (", div(simi * 100, tot_sims), "%)")
+                )
             )
 
             sdat(Dyn, me_out, datfile)

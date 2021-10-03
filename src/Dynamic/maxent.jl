@@ -12,7 +12,8 @@ function maxent(V, D, cgD_X;
         stst_th = 1e-2,
         stst_w = 10,
 
-        check_b0 = true
+        check_b0 = true,
+        further_info = (;)
 
     )
 
@@ -70,6 +71,7 @@ function maxent(V, D, cgD_X;
     # Info funtions
     function gd_ug_info() 
         @info("ug grad descent ",
+            further_info...,
             topiter, gd_iter,   
             (ug_avPME, cgD_X), 
             gd_err, ug_beta, thid
@@ -78,6 +80,7 @@ function maxent(V, D, cgD_X;
 
     function gd_z_info()
         @info("z grad Descent ",
+            further_info...,
             topiter, gd_iter, 
             (z_avPME, D), 
             gd_err, z_beta, thid
@@ -86,6 +89,7 @@ function maxent(V, D, cgD_X;
 
     function finished_round_info()
         @info("Finished Round",
+            further_info...,
             topiter, conv,
             (z_beta, ug_beta),
             (ug_avPME, cgD_X),
@@ -134,7 +138,6 @@ function maxent(V, D, cgD_X;
         verbose && gd_z_info()
         
         ## -----------------------------------------------------------
-        # TODO: prove all this
         # Check balance at ug_beta = 0.0 the first time
         if check_b0 && (topiter == 1)
             ug_beta0 = 0.0
